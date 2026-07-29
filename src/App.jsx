@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { extractSearchResults, getSearchTerm, searchSavedPages } from "./searchResults.js";
 
 const SOURCE_ORIGIN = "https://www.accordiespartiti.it";
 const SAVED_PAGES_KEY = "accordi-clean:saved-pages";
@@ -38,12 +39,6 @@ function rememberSavedPage(path, title) {
   } catch {
     return current;
   }
-}
-
-function searchSavedPages(savedPages, term) {
-  const normalized = term.trim().toLocaleLowerCase("it");
-  if (!normalized) return [];
-  return savedPages.filter((item) => `${item.title} ${item.path}`.toLocaleLowerCase("it").includes(normalized));
 }
 
 function toLocalPath(href) {
@@ -136,7 +131,8 @@ function transposeChord(value, delta) {
 export function App() {
   const [path, setPath] = useState(() => normalizePath(window.location.href));
   const [page, setPage] = useState({ status: "loading", html: "", title: "" });
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(() => getSearchTerm(normalizePath(window.location.href)));
+  const [requestVersion, setRequestVersion] = useState(0);
   const [transpose, setTranspose] = useState(0);
   const [autoScroll, setAutoScroll] = useState(false);
   const [online, setOnline] = useState(() => navigator.onLine);
@@ -151,6 +147,10 @@ export function App() {
     setPath(cleanPath);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
+
+  useEffect(() => {
+    setQuery(getSearchTerm(path));
+  }, [path]);
 
   useEffect(() => {
     function onPopState() {
@@ -173,9 +173,9 @@ export function App() {
 
   useEffect(() => {
     const controller = new AbortController();
-    setPage({ status: "loading", html: "", title: "" });
+    const searchTerm = getSearchTerm(path);
+    setPage({ status: searchTerm ? "searching" : "loading", html: "", title: "" });
     setTranspose(0);
-    const searchTerm = new URLSearchParams(path.split("?")[1] || "").get("s") || "";
     const localMatches = searchSavedPages(readSavedPages(), searchTerm);
 
     if (!navigator.onLine && searchTerm) {
@@ -198,6 +198,14 @@ export function App() {
         return response.json();
       })
       .then(({ html }) => {
+        if (searchTerm) {
+          const doc = new DOMParser().parseFromString(html, "text/html");
+          const matches = extractSearchResults(doc, searchTerm);
+          const title = `Risultati per “${searchTerm}”`;
+          document.title = `${title} · Lettore pulito`;
+          setPage({ status: "search-results", html: "", title, matches });
+          return;
+        }
         const prepared = prepareContent(html);
         document.title = `${prepared.title} · Lettore pulito`;
         setPage({ status: "ready", ...prepared });
@@ -206,13 +214,23 @@ export function App() {
       .catch((error) => {
         if (error.name === "AbortError") return;
         if (searchTerm) {
-          setPage({ status: "local-search", html: "", title: `Risultati salvati per “${searchTerm}”`, matches: localMatches });
+          if (localMatches.length) {
+            setPage({
+              status: "local-search",
+              html: "",
+              title: `Risultati salvati per “${searchTerm}”`,
+              matches: localMatches,
+              notice: "La ricerca online non è disponibile: mostro i brani salvati su questo dispositivo.",
+            });
+            return;
+          }
+          setPage({ status: "search-error", html: "", title: "Ricerca online non disponibile" });
           return;
         }
         setPage({ status: "error", html: "", title: error.message });
       });
     return () => controller.abort();
-  }, [path]);
+  }, [path, requestVersion]);
 
   useEffect(() => {
     const container = contentRef.current;
@@ -240,6 +258,7 @@ export function App() {
   function handleSearch(event) {
     event.preventDefault();
     if (!query.trim()) return;
+    setRequestVersion((value) => value + 1);
     navigate(`/?s=${encodeURIComponent(query.trim())}`);
   }
 
@@ -254,8 +273,8 @@ export function App() {
           <span>ACCORDI</span><b>&amp;</b><span>SPARTITI</span>
         </button>
         <form className="search" onSubmit={handleSearch}>
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cerca una canzone o un artista..." />
-          <button type="submit">Cerca</button>
+          <input aria-label="Cerca una canzone o un artista" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cerca una canzone o un artista..." />
+          <button type="submit" disabled={page.status === "searching"}>{page.status === "searching" ? "Cerco…" : "Cerca"}</button>
         </form>
       </header>
       <nav className="site-nav" aria-label="Navigazione principale">
@@ -279,11 +298,32 @@ export function App() {
             </div>
           ) : null}
           {page.status === "loading" ? <div className="loading">Caricamento della pagina pulita…</div> : null}
+          {page.status === "searching" ? <div className="loading" role="status">Ricerca in corso… Il primo risultato può richiedere alcuni secondi.</div> : null}
           {page.status === "error" ? <div className="error">{page.title}. Riprova tra poco.</div> : null}
+          {page.status === "search-error" ? <div className="error">{page.title}. Premi Cerca per riprovare.</div> : null}
+          {page.status === "search-results" ? (
+            <section className="search-results">
+              <p className="eyebrow">Ricerca online</p>
+              <h1>{page.title}</h1>
+              {page.matches.length ? (
+                <ul>
+                  {page.matches.map((item) => (
+                    <li key={item.path}>
+                      <button onClick={() => navigate(item.path)}>
+                        <span>{item.title}</span>
+                        {item.artist ? <small>{item.artist}</small> : null}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p>Nessun brano trovato.</p>}
+            </section>
+          ) : null}
           {page.status === "local-search" ? (
-            <section className="local-results">
+            <section className="search-results local-results">
               <p className="eyebrow">Ricerca offline</p>
               <h1>{page.title}</h1>
+              {page.notice ? <p className="search-notice">{page.notice}</p> : null}
               {page.matches.length ? (
                 <ul>
                   {page.matches.map((item) => (
