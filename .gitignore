@@ -1,0 +1,7 @@
+node_modules
+dist
+.clean-cache
+.vercel
+.DS_Store
+AGENTS.md
+design-qa.md
