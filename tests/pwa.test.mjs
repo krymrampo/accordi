@@ -10,11 +10,11 @@ test("manifest defines an installable standalone application", async () => {
   assert.ok(manifest.icons.some((icon) => icon.sizes === "512x512"));
 });
 
-test("service worker caches shell, pages and assets", async () => {
+test("service worker caches the shell and opened pages", async () => {
   const worker = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
   assert.match(worker, /accordi-shell-v1/);
   assert.match(worker, /accordi-pages-v1/);
-  assert.match(worker, /accordi-assets-v1/);
+  assert.doesNotMatch(worker, /api\/asset/);
   assert.match(worker, /event\.request\.mode === "navigate"/);
 });
 

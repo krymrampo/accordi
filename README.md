@@ -1,6 +1,6 @@
 # Accordi Clean
 
-Lettore pulito e installabile per consultare testi e accordi su richiesta. Il frontend React rimuove pubblicità, popup e componenti estranei; le API Vercel recuperano soltanto pagine e asset dal dominio autorizzato.
+Lettore pulito e installabile per consultare testi e accordi su richiesta. Il frontend React rimuove pubblicità, popup, immagini e contenuti multimediali; l'API Vercel recupera soltanto le pagine dal dominio autorizzato.
 
 ## Sviluppo locale
 
@@ -26,7 +26,7 @@ Il repository include `vercel.json` e le funzioni in `api/`, quindi non richiede
 3. Scegliere **Aggiungi alla schermata Home**.
 4. Aprire almeno una volta online ogni brano che si desidera conservare.
 
-Le pagine aperte e i relativi asset vengono salvati nel dispositivo. La ricerca offline opera sui brani già salvati. iOS può eliminare la cache se lo spazio disponibile diventa insufficiente o se vengono cancellati i dati di Safari.
+Le pagine aperte vengono salvate nel dispositivo. La ricerca offline opera sui brani già salvati. iOS può eliminare la cache se lo spazio disponibile diventa insufficiente o se vengono cancellati i dati di Safari.
 
 ## Verifica
 

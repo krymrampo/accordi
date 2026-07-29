@@ -41,28 +41,6 @@ async function cachedText(key, sourcePath) {
   return { html, cached: false, savedAt: Date.now() };
 }
 
-async function cachedAsset(source) {
-  const target = new URL(source);
-  if (target.protocol !== "https:" || target.hostname !== "www.accordiespartiti.it") {
-    throw new Error("Asset non consentito");
-  }
-  const bodyFile = `${cacheName("asset", source)}.bin`;
-  const metaFile = `${cacheName("asset", source)}.json`;
-  if (existsSync(bodyFile) && existsSync(metaFile)) {
-    const meta = JSON.parse(await readFile(metaFile, "utf8"));
-    if (Date.now() - meta.savedAt < CACHE_TTL_MS) return { body: await readFile(bodyFile), contentType: meta.contentType };
-  }
-  const response = await fetch(target, { headers: { "User-Agent": "AccordiESpartitiClean/1.0 local-reader" } });
-  if (!response.ok) throw new Error(`Asset non disponibile (${response.status})`);
-  const contentType = response.headers.get("content-type") || "application/octet-stream";
-  if (!contentType.startsWith("image/") && !contentType.startsWith("font/")) throw new Error("Tipo asset non consentito");
-  const body = Buffer.from(await response.arrayBuffer());
-  await mkdir(CACHE_DIR, { recursive: true });
-  await writeFile(bodyFile, body);
-  await writeFile(metaFile, JSON.stringify({ savedAt: Date.now(), contentType }, null, 2));
-  return { body, contentType };
-}
-
 const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
 const server = createHttpServer(async (request, response) => {
   const url = new URL(request.url || "/", "http://localhost");
@@ -73,14 +51,6 @@ const server = createHttpServer(async (request, response) => {
       const page = await cachedText(sourcePath, sourcePath);
       response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
       response.end(JSON.stringify({ ...page, sourcePath }));
-      return;
-    }
-    if (url.pathname === "/api/asset") {
-      const source = url.searchParams.get("src");
-      if (!source) throw new Error("Asset mancante");
-      const asset = await cachedAsset(source);
-      response.writeHead(200, { "content-type": asset.contentType, "cache-control": "public, max-age=604800" });
-      response.end(asset.body);
       return;
     }
   } catch (error) {

@@ -69,10 +69,10 @@ function prepareContent(html) {
   const doc = new DOMParser().parseFromString(html, "text/html");
   const unwanted = [
     "script", "style", "noscript", "ins", "form", "footer", "header", "nav", "button",
+    "img", "picture", "figure", "svg", "video", "audio", "canvas", "iframe", "source",
     ".adv", ".tfp-adv", ".ezoic-adpicker-ad", ".promo", ".comments-area",
     "#tools", "#tools-responsive", "#autoscroll-responsive", ".second-row",
     "[id*='cookie' i]", "[id*='consent' i]", "[id*='popup' i]", "[id*='modal' i]",
-    "iframe:not([src*='youtube.com']):not([src*='youtu.be'])",
   ];
   doc.querySelectorAll(unwanted.join(",")).forEach((node) => node.remove());
 
@@ -82,7 +82,7 @@ function prepareContent(html) {
     || doc.body;
   content.querySelectorAll("aside, .sidebar, [role='dialog']").forEach((node) => node.remove());
   content.querySelectorAll("h1, h2, h3, h4").forEach((heading) => {
-    if (/lascia un commento|commenti/i.test(heading.textContent || "")) heading.remove();
+    if (/lascia un commento|commenti|video|galleria|fotografie/i.test(heading.textContent || "")) heading.remove();
   });
 
   content.querySelectorAll("*").forEach((node) => {
@@ -115,16 +115,8 @@ function prepareContent(html) {
     link.remove();
   });
 
-  content.querySelectorAll("img[src]").forEach((image) => {
-    const source = new URL(image.getAttribute("src"), SOURCE_ORIGIN).href;
-    image.setAttribute("src", `/api/asset?src=${encodeURIComponent(source)}`);
-    image.setAttribute("loading", "lazy");
-  });
-
-  content.querySelectorAll("iframe[src]").forEach((frame) => {
-    frame.setAttribute("loading", "lazy");
-    frame.setAttribute("allowfullscreen", "true");
-  });
+  content.querySelectorAll("a[href*='youtube.com'], a[href*='youtu.be'], a[href$='.jpg' i], a[href$='.jpeg' i], a[href$='.png' i], a[href$='.webp' i], a[href$='.gif' i]").forEach((link) => link.remove());
+  content.querySelectorAll("a:empty").forEach((link) => link.remove());
 
   return {
     html: content.innerHTML,
@@ -268,7 +260,6 @@ export function App() {
       </header>
       <nav className="site-nav" aria-label="Navigazione principale">
         {NAV_ITEMS.map(([label, href]) => <button key={href} onClick={() => navigate(href)}>{label}</button>)}
-        <a href="https://www.youtube.com/channel/UCmvZB6boJyLkexCTmRWU6bA" target="_blank" rel="noreferrer">YouTube</a>
       </nav>
 
       <main className="layout">
@@ -309,9 +300,9 @@ export function App() {
         <aside className="side-panel">
           <h2>Cosa viene rimosso</h2>
           <ul>
-            <li>Banner e iframe pubblicitari</li>
+            <li>Immagini, video e contenuti incorporati</li>
             <li>Popup, overlay e newsletter</li>
-            <li>Consenso invasivo e tracciatori</li>
+            <li>Pubblicità, consenso e tracciatori</li>
           </ul>
           <p><strong>{savedPages.length}</strong> {savedPages.length === 1 ? "brano disponibile" : "brani disponibili"} offline su questo dispositivo.</p>
           {savedPages.length ? (

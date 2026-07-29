@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { safeAssetUrl } from "../api/asset.js";
 import pageHandler, { safeSourcePath } from "../api/page.js";
 
 function mockResponse() {
@@ -20,12 +19,6 @@ test("accepts local source paths and preserves query strings", () => {
 
 test("rejects source URLs outside the allowed origin", () => {
   assert.equal(safeSourcePath("https://example.com/private"), null);
-});
-
-test("allows only HTTPS assets from the source host", () => {
-  assert.equal(safeAssetUrl("https://www.accordiespartiti.it/wp-content/test.jpg")?.hostname, "www.accordiespartiti.it");
-  assert.equal(safeAssetUrl("http://www.accordiespartiti.it/test.jpg"), null);
-  assert.equal(safeAssetUrl("https://example.com/test.jpg"), null);
 });
 
 test("page function returns upstream HTML with a Vercel cache policy", async () => {

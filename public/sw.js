@@ -1,6 +1,5 @@
 const SHELL_CACHE = "accordi-shell-v1";
 const PAGE_CACHE = "accordi-pages-v1";
-const ASSET_CACHE = "accordi-assets-v1";
 const APP_SHELL = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"];
 
 self.addEventListener("install", (event) => {
@@ -9,7 +8,7 @@ self.addEventListener("install", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
-  const current = new Set([SHELL_CACHE, PAGE_CACHE, ASSET_CACHE]);
+  const current = new Set([SHELL_CACHE, PAGE_CACHE]);
   event.waitUntil(
     caches.keys()
       .then((keys) => Promise.all(keys.filter((key) => !current.has(key)).map((key) => caches.delete(key))))
@@ -45,11 +44,6 @@ self.addEventListener("fetch", (event) => {
 
   if (url.pathname === "/api/page") {
     event.respondWith(networkFirst(event.request, PAGE_CACHE));
-    return;
-  }
-
-  if (url.pathname === "/api/asset") {
-    event.respondWith(cacheFirst(event.request, ASSET_CACHE));
     return;
   }
 
