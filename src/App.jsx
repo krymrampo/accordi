@@ -1,6 +1,28 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChordSheet } from "./ChordSheet.jsx";
+import {
+  BookmarkIcon,
+  CheckIcon,
+  ChevronIcon,
+  DownloadIcon,
+  ExternalIcon,
+  PhoneIcon,
+  PlayIcon,
+  PrintIcon,
+  ReaderIcon,
+  RemovedIcon,
+  ResetIcon,
+  SearchIcon,
+} from "./Icons.jsx";
 import { parseSongPage, SOURCE_ORIGIN } from "./music.js";
+import {
+  readReaderFontSize,
+  readerFontPercentage,
+  READER_FONT_DEFAULT,
+  READER_FONT_MAX,
+  READER_FONT_MIN,
+  saveReaderFontSize,
+} from "./readerPreferences.js";
 import { extractSearchResults, getSearchTerm, searchSavedPages } from "./searchResults.js";
 
 const SAVED_PAGES_KEY = "accordi-clean:saved-pages";
@@ -43,6 +65,11 @@ function rememberSavedPage(path, title) {
   }
 }
 
+function isNavItemActive(path, href) {
+  if (href === "/accordi-chitarra/") return path.startsWith("/accordi/") || path.startsWith(href);
+  return path.startsWith(href);
+}
+
 export function App() {
   const [path, setPath] = useState(() => normalizePath(window.location.href));
   const [page, setPage] = useState({ status: "loading", html: "", title: "" });
@@ -53,6 +80,7 @@ export function App() {
   const [online, setOnline] = useState(() => navigator.onLine);
   const [savedPages, setSavedPages] = useState(() => readSavedPages());
   const [pdfState, setPdfState] = useState(EMPTY_PDF_STATE);
+  const [readerFontSize, setReaderFontSize] = useState(() => readReaderFontSize(window.localStorage));
 
   const isChordPage = useMemo(() => path.startsWith("/accordi/"), [path]);
 
@@ -174,6 +202,10 @@ export function App() {
     setPdfState(EMPTY_PDF_STATE);
   }
 
+  function changeReaderFontSize(nextValue) {
+    setReaderFontSize(saveReaderFontSize(window.localStorage, nextValue));
+  }
+
   async function handlePdf() {
     if (page.status !== "ready" || pdfState.status === "preparing") return;
     setPdfState((current) => ({ ...current, status: "preparing", message: "", error: "" }));
@@ -207,41 +239,70 @@ export function App() {
 
   return (
     <div className="app-shell">
-      <div className="source-note">
-        <span>Versione pulita · le pagine aperte vengono salvate sul dispositivo</span>
-        <strong className={online ? "online" : "offline"}>{online ? "Online" : "Offline"}</strong>
-      </div>
+      <a className="skip-link" href="#main-content">Vai al contenuto</a>
       <header className="site-header">
-        <button className="brand" onClick={() => navigate("/")} aria-label="Torna alla home">
-          <span>ACCORDI</span><b>&amp;</b><span>SPARTITI</span>
-        </button>
-        <form className="search" onSubmit={handleSearch}>
-          <input aria-label="Cerca una canzone o un artista" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cerca una canzone o un artista..." />
-          <button type="submit" disabled={page.status === "searching"}>{page.status === "searching" ? "Cerco…" : "Cerca"}</button>
-        </form>
+        <div className="header-main">
+          <button className="brand" onClick={() => navigate("/")} aria-label="Torna alla home">
+            <span>ACCORDI</span><b>&amp;</b><span>SPARTITI</span>
+          </button>
+          <form className="search" onSubmit={handleSearch}>
+            <input aria-label="Cerca una canzone o un artista" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cerca una canzone o un artista…" />
+            <button type="submit" disabled={page.status === "searching"} aria-label={page.status === "searching" ? "Ricerca in corso" : "Cerca"}>
+              <SearchIcon />
+            </button>
+          </form>
+        </div>
+        <nav className="site-nav" aria-label="Navigazione principale">
+          {NAV_ITEMS.map(([label, href]) => {
+            const active = isNavItemActive(path, href);
+            return (
+              <button className={active ? "is-active" : ""} aria-current={active ? "page" : undefined} key={href} onClick={() => navigate(href)}>
+                {label}
+              </button>
+            );
+          })}
+        </nav>
       </header>
-      <nav className="site-nav" aria-label="Navigazione principale">
-        {NAV_ITEMS.map(([label, href]) => <button key={href} onClick={() => navigate(href)}>{label}</button>)}
-      </nav>
 
-      <main className="layout">
+      <main className="layout" id="main-content">
         <section className="reader-panel">
           <div className="reader-meta">
-            <span>lettore senza interruzioni</span>
-            <a href={`${SOURCE_ORIGIN}${path}`} target="_blank" rel="noreferrer">Apri originale</a>
+            <div className="reader-meta-lead">
+              <ReaderIcon />
+              <span>Lettore senza interruzioni</span>
+              <span className={`connection-status ${online ? "is-online" : "is-offline"}`}>
+                <i aria-hidden="true" />{online ? "Online" : "Offline"}
+              </span>
+            </div>
+            <a href={`${SOURCE_ORIGIN}${path}`} target="_blank" rel="noreferrer">Apri originale <ExternalIcon /></a>
           </div>
           {isChordPage && page.status === "ready" ? (
             <div className="music-toolbar" aria-label="Strumenti per gli accordi">
-              <span>Traspositore</span>
-              <button disabled={transpose <= -6} onClick={() => changeTranspose(transpose - 1)} aria-label="Abbassa di un semitono">−</button>
-              <strong>{transpose > 0 ? `+${transpose}` : transpose}</strong>
-              <button disabled={transpose >= 6} onClick={() => changeTranspose(transpose + 1)} aria-label="Alza di un semitono">+</button>
-              <button disabled={transpose === 0} onClick={() => changeTranspose(0)}>Reimposta</button>
-              <button className={autoScroll ? "is-active" : ""} onClick={() => setAutoScroll((value) => !value)}>{autoScroll ? "Ferma auto-scroll" : "Auto-scroll"}</button>
-              <button onClick={() => window.print()}>Stampa</button>
-              <button className="pdf-button" disabled={pdfState.status === "preparing"} onClick={handlePdf}>
-                {pdfState.status === "preparing" ? "Creo PDF…" : pdfState.status === "ready" ? "Salva/Condividi PDF" : "Scarica PDF"}
-              </button>
+              <div className="toolbar-group toolbar-transpose" aria-label="Traspositore">
+                <span className="toolbar-label">Traspositore</span>
+                <button className="toolbar-square" disabled={transpose <= -6} onClick={() => changeTranspose(transpose - 1)} aria-label="Abbassa di un semitono">−</button>
+                <strong className="toolbar-value transpose-value">{transpose > 0 ? `+${transpose}` : transpose}</strong>
+                <button className="toolbar-square" disabled={transpose >= 6} onClick={() => changeTranspose(transpose + 1)} aria-label="Alza di un semitono">+</button>
+                <button className="toolbar-action toolbar-reset" disabled={transpose === 0} onClick={() => changeTranspose(0)} aria-label="Reimposta trasposizione">
+                  <ResetIcon /><span>Reimposta</span>
+                </button>
+              </div>
+              <div className="toolbar-group toolbar-font" aria-label="Dimensione testo e accordi">
+                <span className="toolbar-label">Testo</span>
+                <button className="toolbar-square font-control" disabled={readerFontSize <= READER_FONT_MIN} onClick={() => changeReaderFontSize(readerFontSize - 1)} aria-label="Riduci dimensione testo">A−</button>
+                <strong className="toolbar-value font-size-value">{readerFontPercentage(readerFontSize)}%</strong>
+                <button className="toolbar-square font-control" disabled={readerFontSize >= READER_FONT_MAX} onClick={() => changeReaderFontSize(readerFontSize + 1)} aria-label="Aumenta dimensione testo">A+</button>
+                <button className="toolbar-action font-reset" disabled={readerFontSize === READER_FONT_DEFAULT} onClick={() => changeReaderFontSize(READER_FONT_DEFAULT)} aria-label="Reimposta dimensione testo al 100%">100%</button>
+              </div>
+              <div className="toolbar-group toolbar-main-actions">
+                <button className={`toolbar-action${autoScroll ? " is-active" : ""}`} onClick={() => setAutoScroll((value) => !value)}>
+                  <PlayIcon paused={autoScroll} /><span>{autoScroll ? "Ferma auto-scroll" : "Auto-scroll"}</span>
+                </button>
+                <button className="toolbar-action" onClick={() => window.print()}><PrintIcon /><span>Stampa</span></button>
+                <button className="toolbar-action pdf-button" disabled={pdfState.status === "preparing"} onClick={handlePdf}>
+                  <DownloadIcon /><span>{pdfState.status === "preparing" ? "Creo PDF…" : pdfState.status === "ready" ? "Salva PDF" : "Scarica PDF"}</span>
+                </button>
+              </div>
             </div>
           ) : null}
           {isChordPage && (pdfState.message || pdfState.error) ? (
@@ -286,7 +347,7 @@ export function App() {
           {page.status === "ready" ? (
             <article className="source-content" onClick={handleContentClick}>
               {page.song.contentBlocks.map((block, index) => block.type === "music" ? (
-                <ChordSheet block={page.song.musicBlocks[block.musicIndex]} transpose={transpose} key={`music-${block.musicIndex}`} />
+                <ChordSheet block={page.song.musicBlocks[block.musicIndex]} fontSize={readerFontSize} transpose={transpose} key={`${path}-music-${block.musicIndex}`} />
               ) : (
                 <div className="source-html-block" dangerouslySetInnerHTML={{ __html: block.html }} key={`html-${index}`} />
               ))}
@@ -294,25 +355,29 @@ export function App() {
           ) : null}
         </section>
         <aside className="side-panel">
-          <h2>Cosa viene rimosso</h2>
-          <ul>
-            <li>Immagini, video e contenuti incorporati</li>
-            <li>Popup, overlay e newsletter</li>
-            <li>Pubblicità, consenso e tracciatori</li>
-          </ul>
-          <p><strong>{savedPages.length}</strong> {savedPages.length === 1 ? "brano disponibile" : "brani disponibili"} offline su questo dispositivo.</p>
-          {savedPages.length ? (
-            <div className="saved-pages">
-              <h3>Salvati di recente</h3>
-              {savedPages.slice(0, 5).map((item) => (
-                <button key={item.path} onClick={() => navigate(item.path)}>{item.title}</button>
-              ))}
-            </div>
-          ) : null}
-          <div className="install-note">
-            <h3>Installa su iPhone</h3>
-            <p>Apri in Safari, tocca Condividi e poi “Aggiungi alla schermata Home”.</p>
-          </div>
+          <section className="side-card removed-card">
+            <div className="side-card-heading"><span className="side-icon"><RemovedIcon /></span><h2>Cosa viene rimosso</h2></div>
+            <ul>
+              <li>Immagini, video e contenuti incorporati</li>
+              <li>Popup, overlay e newsletter</li>
+              <li>Pubblicità, consenso e tracciatori</li>
+            </ul>
+            <p className="offline-summary"><span><CheckIcon /></span><span><strong>{savedPages.length}</strong> {savedPages.length === 1 ? "brano disponibile" : "brani disponibili"} offline su questo dispositivo.</span></p>
+          </section>
+          <section className="side-card recent-card">
+            <div className="side-card-heading"><span className="side-icon"><BookmarkIcon /></span><h2>Salvati di recente</h2></div>
+            {savedPages.length ? (
+              <div className="saved-pages">
+                {savedPages.slice(0, 5).map((item) => (
+                  <button key={item.path} onClick={() => navigate(item.path)}><span>{item.title}</span><ChevronIcon /></button>
+                ))}
+              </div>
+            ) : <p className="empty-saved">I brani aperti compariranno qui e resteranno disponibili offline.</p>}
+          </section>
+          <section className="side-card install-card">
+            <div className="side-card-heading"><span className="side-icon"><PhoneIcon /></span><h2>Installa su iPhone</h2></div>
+            <p>Apri in Safari, tocca Condividi e poi <strong>“Aggiungi alla schermata Home”.</strong></p>
+          </section>
         </aside>
       </main>
     </div>

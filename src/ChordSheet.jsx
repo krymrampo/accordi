@@ -1,4 +1,4 @@
-import { memo, useMemo } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { transposeMusicBlock } from "./music.js";
 
 function PairRow({ row }) {
@@ -34,16 +34,52 @@ function MusicRow({ row }) {
   return <div className="music-row music-text">{row.text}</div>;
 }
 
-export const ChordSheet = memo(function ChordSheet({ block, transpose }) {
+export const ChordSheet = memo(function ChordSheet({ block, transpose, fontSize = 16 }) {
   const renderedBlock = useMemo(() => transposeMusicBlock(block, transpose), [block, transpose]);
+  const scrollRef = useRef(null);
+  const [isOverflowing, setIsOverflowing] = useState(false);
+
+  useEffect(() => {
+    const viewport = scrollRef.current;
+    if (!viewport) return undefined;
+
+    const updateOverflow = () => {
+      setIsOverflowing(viewport.scrollWidth > viewport.clientWidth + 1);
+    };
+    const frame = window.requestAnimationFrame(updateOverflow);
+    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(updateOverflow) : null;
+    observer?.observe(viewport);
+    if (viewport.firstElementChild) observer?.observe(viewport.firstElementChild);
+    window.addEventListener("resize", updateOverflow);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer?.disconnect();
+      window.removeEventListener("resize", updateOverflow);
+    };
+  }, [renderedBlock, fontSize]);
 
   return (
-    <section className="chord-sheet" aria-label="Testo e accordi">
-      {renderedBlock.sections.map((section, sectionIndex) => (
-        <div className="music-section" data-key={section.transposedKey || undefined} key={`${section.key || "section"}-${sectionIndex}`}>
-          {section.rows.map((row, rowIndex) => <MusicRow row={row} key={`${row.kind}-${rowIndex}`} />)}
+    <section
+      className={`chord-sheet${isOverflowing ? " is-overflowing" : ""}`}
+      aria-label="Testo e accordi"
+      style={{ "--reader-font-size": `${fontSize}px` }}
+    >
+      {isOverflowing ? <p className="chord-scroll-hint" aria-hidden="true">Scorri lateralmente <span>→</span></p> : null}
+      <div
+        className="chord-sheet-scroll"
+        ref={scrollRef}
+        tabIndex="0"
+        aria-label={isOverflowing ? "Testo e accordi, scorri lateralmente per leggere le righe complete" : "Testo e accordi"}
+      >
+        <div className="chord-sheet-content">
+          {renderedBlock.sections.map((section, sectionIndex) => (
+            <div className="music-section" data-key={section.transposedKey || undefined} key={`${section.key || "section"}-${sectionIndex}`}>
+              {section.rows.map((row, rowIndex) => <MusicRow row={row} key={`${row.kind}-${rowIndex}`} />)}
+            </div>
+          ))}
         </div>
-      ))}
+      </div>
     </section>
   );
 });
