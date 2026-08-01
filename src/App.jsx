@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { ChordSheet } from "./ChordSheet.jsx";
+import { parseSongPage, SOURCE_ORIGIN } from "./music.js";
 import { extractSearchResults, getSearchTerm, searchSavedPages } from "./searchResults.js";
 
-const SOURCE_ORIGIN = "https://www.accordiespartiti.it";
 const SAVED_PAGES_KEY = "accordi-clean:saved-pages";
 const PAGE_CACHE = "accordi-pages-v1";
+const EMPTY_PDF_STATE = { status: "idle", file: null, path: "", transpose: 0, message: "", error: "" };
 const NAV_ITEMS = [
   ["Accordi", "/accordi-chitarra/"],
   ["Spartiti", "/spartiti-pianoforte/"],
@@ -41,93 +43,6 @@ function rememberSavedPage(path, title) {
   }
 }
 
-function toLocalPath(href) {
-  try {
-    const url = new URL(href, SOURCE_ORIGIN);
-    if (url.origin !== SOURCE_ORIGIN) return null;
-    return `${url.pathname}${url.search}${url.hash}`;
-  } catch {
-    return null;
-  }
-}
-
-function safeExternalHref(href) {
-  try {
-    const url = new URL(href, SOURCE_ORIGIN);
-    return ["http:", "https:", "mailto:"].includes(url.protocol) ? url.href : null;
-  } catch {
-    return null;
-  }
-}
-
-function prepareContent(html) {
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  const unwanted = [
-    "script", "style", "noscript", "ins", "form", "footer", "header", "nav", "button",
-    "img", "picture", "figure", "svg", "video", "audio", "canvas", "iframe", "source",
-    ".adv", ".tfp-adv", ".ezoic-adpicker-ad", ".promo", ".comments-area",
-    "#tools", "#tools-responsive", "#autoscroll-responsive", ".second-row",
-    "[id*='cookie' i]", "[id*='consent' i]", "[id*='popup' i]", "[id*='modal' i]",
-  ];
-  doc.querySelectorAll(unwanted.join(",")).forEach((node) => node.remove());
-
-  const content = doc.querySelector("#content .post-content")
-    || doc.querySelector("#content")
-    || doc.querySelector("article, main, .site-content, .content")
-    || doc.body;
-  content.querySelectorAll("aside, .sidebar, [role='dialog']").forEach((node) => node.remove());
-  content.querySelectorAll("h1, h2, h3, h4").forEach((heading) => {
-    if (/lascia un commento|commenti|video|galleria|fotografie/i.test(heading.textContent || "")) heading.remove();
-  });
-
-  content.querySelectorAll("*").forEach((node) => {
-    [...node.attributes].forEach((attribute) => {
-      if (attribute.name.startsWith("on") || attribute.name === "style" || attribute.name === "srcset") {
-        node.removeAttribute(attribute.name);
-      }
-    });
-  });
-
-  content.querySelectorAll("a[href]").forEach((link) => {
-    const rawHref = link.getAttribute("href");
-    const localPath = toLocalPath(rawHref);
-    if (localPath) {
-      link.setAttribute("href", localPath);
-      link.dataset.local = "true";
-    } else {
-      const externalHref = safeExternalHref(rawHref);
-      if (externalHref) {
-        link.setAttribute("href", externalHref);
-        link.setAttribute("target", "_blank");
-        link.setAttribute("rel", "noopener noreferrer");
-      } else {
-        link.removeAttribute("href");
-      }
-    }
-  });
-
-  content.querySelectorAll("a[href*='chitarrafacile.com']").forEach((link) => {
-    link.remove();
-  });
-
-  content.querySelectorAll("a[href*='youtube.com'], a[href*='youtu.be'], a[href$='.jpg' i], a[href$='.jpeg' i], a[href$='.png' i], a[href$='.webp' i], a[href$='.gif' i]").forEach((link) => link.remove());
-  content.querySelectorAll("a:empty").forEach((link) => link.remove());
-
-  return {
-    html: content.innerHTML,
-    title: content.querySelector("h1")?.textContent?.trim() || doc.title || "Accordi e Spartiti",
-  };
-}
-
-function transposeChord(value, delta) {
-  const notes = ["DO", "DO#", "RE", "RE#", "MI", "FA", "FA#", "SOL", "SOL#", "LA", "LA#", "SI"];
-  const normalized = value.replace("Db", "DO#").replace("Eb", "RE#").replace("Gb", "FA#").replace("Ab", "SOL#").replace("Bb", "LA#");
-  return normalized.replace(/(^|\s)(DO#?|RE#?|MI|FA#?|SOL#?|LA#?|SI)([A-Za-z0-9/#()+-]*)(?=\s|$)/g, (_match, lead, note, suffix) => {
-    const index = notes.indexOf(note);
-    return index === -1 ? `${lead}${note}${suffix}` : `${lead}${notes[(index + delta + 12) % 12]}${suffix}`;
-  });
-}
-
 export function App() {
   const [path, setPath] = useState(() => normalizePath(window.location.href));
   const [page, setPage] = useState({ status: "loading", html: "", title: "" });
@@ -137,7 +52,7 @@ export function App() {
   const [autoScroll, setAutoScroll] = useState(false);
   const [online, setOnline] = useState(() => navigator.onLine);
   const [savedPages, setSavedPages] = useState(() => readSavedPages());
-  const contentRef = useRef(null);
+  const [pdfState, setPdfState] = useState(EMPTY_PDF_STATE);
 
   const isChordPage = useMemo(() => path.startsWith("/accordi/"), [path]);
 
@@ -145,6 +60,7 @@ export function App() {
     const cleanPath = normalizePath(nextPath);
     window.history.pushState({}, "", cleanPath);
     setPath(cleanPath);
+    setPdfState(EMPTY_PDF_STATE);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -176,6 +92,7 @@ export function App() {
     const searchTerm = getSearchTerm(path);
     setPage({ status: searchTerm ? "searching" : "loading", html: "", title: "" });
     setTranspose(0);
+    setPdfState(EMPTY_PDF_STATE);
     const localMatches = searchSavedPages(readSavedPages(), searchTerm);
 
     if (!navigator.onLine && searchTerm) {
@@ -206,10 +123,10 @@ export function App() {
           setPage({ status: "search-results", html: "", title, matches });
           return;
         }
-        const prepared = prepareContent(html);
-        document.title = `${prepared.title} · Lettore pulito`;
-        setPage({ status: "ready", ...prepared });
-        setSavedPages(rememberSavedPage(path, prepared.title));
+        const song = parseSongPage(html, path);
+        document.title = `${song.title} · Lettore pulito`;
+        setPage({ status: "ready", song, title: song.title });
+        setSavedPages(rememberSavedPage(path, song.title));
       })
       .catch((error) => {
         if (error.name === "AbortError") return;
@@ -233,16 +150,6 @@ export function App() {
   }, [path, requestVersion]);
 
   useEffect(() => {
-    const container = contentRef.current;
-    if (!container || !isChordPage) return;
-    container.querySelectorAll("pre").forEach((node) => {
-      const original = node.dataset.originalChordText || node.textContent;
-      node.dataset.originalChordText = original;
-      node.textContent = transposeChord(original, transpose);
-    });
-  }, [page.html, isChordPage, transpose]);
-
-  useEffect(() => {
     if (!autoScroll) return undefined;
     const timer = window.setInterval(() => window.scrollBy({ top: 1, behavior: "instant" }), 28);
     return () => window.clearInterval(timer);
@@ -260,6 +167,42 @@ export function App() {
     if (!query.trim()) return;
     setRequestVersion((value) => value + 1);
     navigate(`/?s=${encodeURIComponent(query.trim())}`);
+  }
+
+  function changeTranspose(nextValue) {
+    setTranspose(Math.max(-6, Math.min(6, nextValue)));
+    setPdfState(EMPTY_PDF_STATE);
+  }
+
+  async function handlePdf() {
+    if (page.status !== "ready" || pdfState.status === "preparing") return;
+    setPdfState((current) => ({ ...current, status: "preparing", message: "", error: "" }));
+
+    try {
+      const pdfTools = await import("./songPdf.js");
+      const isCurrentFile = pdfState.file && pdfState.path === path && pdfState.transpose === transpose;
+      const file = isCurrentFile ? pdfState.file : await pdfTools.createSongPdfFile(page.song, transpose);
+
+      if (pdfTools.canSharePdf(file)) {
+        setPdfState({ status: "ready", file, path, transpose, message: "PDF pronto: puoi salvarlo o condividerlo.", error: "" });
+        try {
+          await pdfTools.sharePdf(file, page.song);
+          setPdfState({ ...EMPTY_PDF_STATE, message: "PDF consegnato al dispositivo." });
+        } catch (error) {
+          if (error?.name !== "AbortError" && error?.name !== "NotAllowedError") throw error;
+        }
+      } else {
+        pdfTools.downloadPdf(file);
+        setPdfState({ ...EMPTY_PDF_STATE, message: "Download del PDF avviato." });
+      }
+    } catch (error) {
+      setPdfState((current) => ({
+        ...current,
+        status: current.file ? "ready" : "idle",
+        message: "",
+        error: error instanceof Error ? error.message : "Non riesco a creare il PDF.",
+      }));
+    }
   }
 
   return (
@@ -290,12 +233,19 @@ export function App() {
           {isChordPage && page.status === "ready" ? (
             <div className="music-toolbar" aria-label="Strumenti per gli accordi">
               <span>Traspositore</span>
-              <button onClick={() => setTranspose((value) => value - 1)} aria-label="Abbassa di un semitono">−</button>
+              <button disabled={transpose <= -6} onClick={() => changeTranspose(transpose - 1)} aria-label="Abbassa di un semitono">−</button>
               <strong>{transpose > 0 ? `+${transpose}` : transpose}</strong>
-              <button onClick={() => setTranspose((value) => value + 1)} aria-label="Alza di un semitono">+</button>
+              <button disabled={transpose >= 6} onClick={() => changeTranspose(transpose + 1)} aria-label="Alza di un semitono">+</button>
+              <button disabled={transpose === 0} onClick={() => changeTranspose(0)}>Reimposta</button>
               <button className={autoScroll ? "is-active" : ""} onClick={() => setAutoScroll((value) => !value)}>{autoScroll ? "Ferma auto-scroll" : "Auto-scroll"}</button>
               <button onClick={() => window.print()}>Stampa</button>
+              <button className="pdf-button" disabled={pdfState.status === "preparing"} onClick={handlePdf}>
+                {pdfState.status === "preparing" ? "Creo PDF…" : pdfState.status === "ready" ? "Salva/Condividi PDF" : "Scarica PDF"}
+              </button>
             </div>
+          ) : null}
+          {isChordPage && (pdfState.message || pdfState.error) ? (
+            <p className={`pdf-status${pdfState.error ? " is-error" : ""}`} role="status">{pdfState.error || pdfState.message}</p>
           ) : null}
           {page.status === "loading" ? <div className="loading">Caricamento della pagina pulita…</div> : null}
           {page.status === "searching" ? <div className="loading" role="status">Ricerca in corso… Il primo risultato può richiedere alcuni secondi.</div> : null}
@@ -334,7 +284,13 @@ export function App() {
             </section>
           ) : null}
           {page.status === "ready" ? (
-            <article ref={contentRef} className="source-content" onClick={handleContentClick} dangerouslySetInnerHTML={{ __html: page.html }} />
+            <article className="source-content" onClick={handleContentClick}>
+              {page.song.contentBlocks.map((block, index) => block.type === "music" ? (
+                <ChordSheet block={page.song.musicBlocks[block.musicIndex]} transpose={transpose} key={`music-${block.musicIndex}`} />
+              ) : (
+                <div className="source-html-block" dangerouslySetInnerHTML={{ __html: block.html }} key={`html-${index}`} />
+              ))}
+            </article>
           ) : null}
         </section>
         <aside className="side-panel">
