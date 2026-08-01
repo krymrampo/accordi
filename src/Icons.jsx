@@ -44,20 +44,8 @@ export function DownloadIcon() {
   return <Icon size={18}><path d="M12 3v12M7 10l5 5 5-5M4 20h16" /></Icon>;
 }
 
-export function RemovedIcon() {
-  return <Icon><path d="M5 7h14M9 7V4h6v3M8 10v8M12 10v8M16 10v8" /><path d="M6 7l1 14h10l1-14" /></Icon>;
-}
-
 export function BookmarkIcon() {
   return <Icon><path d="M6 4h12v17l-6-4-6 4z" /></Icon>;
-}
-
-export function PhoneIcon() {
-  return <Icon><rect x="6" y="2.5" width="12" height="19" rx="2" /><path d="M10 18h4" /></Icon>;
-}
-
-export function CheckIcon() {
-  return <Icon size={18}><circle cx="12" cy="12" r="9" /><path d="m8 12 2.5 2.5L16 9" /></Icon>;
 }
 
 export function ChevronIcon() {

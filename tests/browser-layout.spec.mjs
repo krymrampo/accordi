@@ -12,6 +12,40 @@ test.beforeEach(async ({ page }) => {
   }));
 });
 
+test("shows only the large search and locally saved songs on the home page", async ({ page }) => {
+  const pageRequests = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/page?")) pageRequests.push(request.url());
+  });
+  await page.addInitScript(() => {
+    localStorage.setItem("accordi-clean:saved-pages", JSON.stringify([
+      { path: "/accordi/italiani/baglioni-claudio/solo-2/", title: "Solo", artist: "Claudio Baglioni", savedAt: 2 },
+      { path: "/accordi/italiani/giorgia/girasole/", title: "Girasole", artist: "Giorgia", savedAt: 1 },
+    ]));
+  });
+
+  await page.goto("/");
+
+  await expect(page.getByRole("heading", { name: "Cerca un brano o un artista" })).toBeVisible();
+  await expect(page.locator(".home-search input")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Brani salvati" })).toBeVisible();
+  await expect(page.locator(".home-saved-list button")).toHaveCount(2);
+  await expect(page.getByText("Claudio Baglioni")).toBeVisible();
+  await expect(page.locator(".site-nav")).toHaveCount(0);
+  await expect(page.locator(".side-panel")).toHaveCount(0);
+  await expect(page.getByText("Videolezioni")).toHaveCount(0);
+  expect(pageRequests).toHaveLength(0);
+});
+
+test("keeps only a compact search above the focused song reader", async ({ page }) => {
+  await page.goto(songPath);
+
+  await expect(page.locator("header .search")).toBeVisible();
+  await expect(page.locator(".reader-panel")).toBeVisible();
+  await expect(page.locator(".site-nav")).toHaveCount(0);
+  await expect(page.locator(".side-panel")).toHaveCount(0);
+});
+
 for (const width of [320, 390, 760, 1280]) {
   test(`keeps chord rows aligned inside one horizontal scroller at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
@@ -32,6 +66,10 @@ for (const width of [320, 390, 760, 1280]) {
       });
       const progressionsStayOnOneLine = [...document.querySelectorAll(".music-progression")]
         .every((row) => getComputedStyle(row).flexWrap === "nowrap");
+      const adjacentPair = [...document.querySelectorAll(".music-pair-row")]
+        .find((row) => row.nextElementSibling?.classList.contains("music-pair-row"));
+      const nextPair = adjacentPair?.nextElementSibling;
+      const fontSize = Number.parseFloat(getComputedStyle(document.querySelector(".chord-sheet-content")).fontSize);
       scroller.scrollLeft = 60;
       return {
         viewport: innerWidth,
@@ -41,6 +79,14 @@ for (const width of [320, 390, 760, 1280]) {
         progressionsStayOnOneLine,
         sheetOverflows: scroller.scrollWidth > scroller.clientWidth,
         sheetCanScroll: scroller.scrollLeft > 0,
+        sheetWidthRatio: scroller.clientWidth / innerWidth,
+        sheetFontSize: fontSize,
+        sheetBorderLeft: getComputedStyle(document.querySelector(".chord-sheet")).borderLeftWidth,
+        sheetBackground: getComputedStyle(document.querySelector(".chord-sheet")).backgroundColor,
+        verseGap: adjacentPair && nextPair
+          ? nextPair.getBoundingClientRect().top - adjacentPair.getBoundingClientRect().bottom
+          : 0,
+        blankHeight: document.querySelector(".music-blank")?.getBoundingClientRect().height || 0,
         rowOwnsOverflow: [...document.querySelectorAll(".music-row")]
           .some((row) => ["auto", "scroll"].includes(getComputedStyle(row).overflowX)),
       };
@@ -51,13 +97,31 @@ for (const width of [320, 390, 760, 1280]) {
     expect(layout.pairTracksStayOnOneLine).toBe(true);
     expect(layout.progressionsStayOnOneLine).toBe(true);
     expect(layout.rowOwnsOverflow).toBe(false);
+    expect(layout.sheetBorderLeft).toBe("0px");
+    expect(layout.sheetBackground).toBe("rgba(0, 0, 0, 0)");
+    expect(layout.verseGap).toBeGreaterThanOrEqual(layout.sheetFontSize * .55);
+    expect(layout.blankHeight).toBeGreaterThanOrEqual(layout.sheetFontSize * 1.2);
     if (width <= 760) {
       expect(layout.sheetOverflows).toBe(true);
       expect(layout.sheetCanScroll).toBe(true);
+      expect(layout.sheetWidthRatio).toBeGreaterThan(.9);
       await expect(page.locator(".chord-scroll-hint")).toBeVisible();
     }
+    expect(layout.sheetFontSize).toBe(width <= 390 ? 14 : 16);
   });
 }
+
+test("uses a compact phone scale while keeping the same percentage controls", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(songPath);
+  const content = page.locator(".chord-sheet-content");
+  await expect(page.locator(".font-size-value")).toHaveText("100%");
+  await expect(content).toHaveCSS("font-size", "14px");
+
+  for (let step = 0; step < 6; step += 1) await page.getByRole("button", { name: "Aumenta dimensione testo" }).click();
+  await expect(page.locator(".font-size-value")).toHaveText("138%");
+  await expect(content).toHaveCSS("font-size", "20px");
+});
 
 test("resizes chord text within bounds, resets it and persists the preference", async ({ page }) => {
   await page.goto(songPath);

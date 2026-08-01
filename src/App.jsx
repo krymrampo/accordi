@@ -2,15 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { ChordSheet } from "./ChordSheet.jsx";
 import {
   BookmarkIcon,
-  CheckIcon,
   ChevronIcon,
   DownloadIcon,
   ExternalIcon,
-  PhoneIcon,
   PlayIcon,
   PrintIcon,
   ReaderIcon,
-  RemovedIcon,
   ResetIcon,
   SearchIcon,
 } from "./Icons.jsx";
@@ -28,12 +25,6 @@ import { extractSearchResults, getSearchTerm, searchSavedPages } from "./searchR
 const SAVED_PAGES_KEY = "accordi-clean:saved-pages";
 const PAGE_CACHE = "accordi-pages-v1";
 const EMPTY_PDF_STATE = { status: "idle", file: null, path: "", transpose: 0, message: "", error: "" };
-const NAV_ITEMS = [
-  ["Accordi", "/accordi-chitarra/"],
-  ["Spartiti", "/spartiti-pianoforte/"],
-  ["Videolezioni", "/videolezioni/"],
-  ["Libri", "/tutti-i-libri/"],
-];
 
 function normalizePath(value) {
   try {
@@ -53,10 +44,10 @@ function readSavedPages() {
   }
 }
 
-function rememberSavedPage(path, title) {
+function rememberSavedPage(path, title, artist = "") {
   if (!path.startsWith("/accordi/")) return readSavedPages();
   const current = readSavedPages().filter((item) => item.path !== path);
-  const next = [{ path, title, savedAt: Date.now() }, ...current].slice(0, 250);
+  const next = [{ path, title, artist, savedAt: Date.now() }, ...current].slice(0, 250);
   try {
     window.localStorage.setItem(SAVED_PAGES_KEY, JSON.stringify(next));
     return next;
@@ -65,14 +56,11 @@ function rememberSavedPage(path, title) {
   }
 }
 
-function isNavItemActive(path, href) {
-  if (href === "/accordi-chitarra/") return path.startsWith("/accordi/") || path.startsWith(href);
-  return path.startsWith(href);
-}
-
 export function App() {
   const [path, setPath] = useState(() => normalizePath(window.location.href));
-  const [page, setPage] = useState({ status: "loading", html: "", title: "" });
+  const [page, setPage] = useState(() => normalizePath(window.location.href) === "/"
+    ? { status: "home", html: "", title: "" }
+    : { status: "loading", html: "", title: "" });
   const [query, setQuery] = useState(() => getSearchTerm(normalizePath(window.location.href)));
   const [requestVersion, setRequestVersion] = useState(0);
   const [transpose, setTranspose] = useState(0);
@@ -83,6 +71,7 @@ export function App() {
   const [readerFontSize, setReaderFontSize] = useState(() => readReaderFontSize(window.localStorage));
 
   const isChordPage = useMemo(() => path.startsWith("/accordi/"), [path]);
+  const isHome = path === "/";
 
   function navigate(nextPath) {
     const cleanPath = normalizePath(nextPath);
@@ -118,9 +107,17 @@ export function App() {
   useEffect(() => {
     const controller = new AbortController();
     const searchTerm = getSearchTerm(path);
-    setPage({ status: searchTerm ? "searching" : "loading", html: "", title: "" });
     setTranspose(0);
     setPdfState(EMPTY_PDF_STATE);
+
+    if (path === "/") {
+      document.title = "Accordi e Spartiti · Cerca un brano";
+      setSavedPages(readSavedPages());
+      setPage({ status: "home", html: "", title: "" });
+      return () => controller.abort();
+    }
+
+    setPage({ status: searchTerm ? "searching" : "loading", html: "", title: "" });
     const localMatches = searchSavedPages(readSavedPages(), searchTerm);
 
     if (!navigator.onLine && searchTerm) {
@@ -154,7 +151,7 @@ export function App() {
         const song = parseSongPage(html, path);
         document.title = `${song.title} · Lettore pulito`;
         setPage({ status: "ready", song, title: song.title });
-        setSavedPages(rememberSavedPage(path, song.title));
+        setSavedPages(rememberSavedPage(path, song.title, song.artist));
       })
       .catch((error) => {
         if (error.name === "AbortError") return;
@@ -241,145 +238,162 @@ export function App() {
     <div className="app-shell">
       <a className="skip-link" href="#main-content">Vai al contenuto</a>
       <header className="site-header">
-        <div className="header-main">
+        <div className={`header-main${isHome ? " is-home" : ""}`}>
           <button className="brand" onClick={() => navigate("/")} aria-label="Torna alla home">
             <span>ACCORDI</span><b>&amp;</b><span>SPARTITI</span>
           </button>
-          <form className="search" onSubmit={handleSearch}>
-            <input aria-label="Cerca una canzone o un artista" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cerca una canzone o un artista…" />
-            <button type="submit" disabled={page.status === "searching"} aria-label={page.status === "searching" ? "Ricerca in corso" : "Cerca"}>
-              <SearchIcon />
-            </button>
-          </form>
-        </div>
-        <nav className="site-nav" aria-label="Navigazione principale">
-          {NAV_ITEMS.map(([label, href]) => {
-            const active = isNavItemActive(path, href);
-            return (
-              <button className={active ? "is-active" : ""} aria-current={active ? "page" : undefined} key={href} onClick={() => navigate(href)}>
-                {label}
+          {!isHome ? (
+            <form className="search" onSubmit={handleSearch}>
+              <input aria-label="Cerca una canzone o un artista" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cerca una canzone o un artista…" />
+              <button type="submit" disabled={page.status === "searching"} aria-label={page.status === "searching" ? "Ricerca in corso" : "Cerca"}>
+                <SearchIcon />
               </button>
-            );
-          })}
-        </nav>
+            </form>
+          ) : null}
+        </div>
       </header>
 
-      <main className="layout" id="main-content">
-        <section className="reader-panel">
-          <div className="reader-meta">
-            <div className="reader-meta-lead">
-              <ReaderIcon />
-              <span>Lettore senza interruzioni</span>
-              <span className={`connection-status ${online ? "is-online" : "is-offline"}`}>
-                <i aria-hidden="true" />{online ? "Online" : "Offline"}
-              </span>
-            </div>
-            <a href={`${SOURCE_ORIGIN}${path}`} target="_blank" rel="noreferrer">Apri originale <ExternalIcon /></a>
-          </div>
-          {isChordPage && page.status === "ready" ? (
-            <div className="music-toolbar" aria-label="Strumenti per gli accordi">
-              <div className="toolbar-group toolbar-transpose" aria-label="Traspositore">
-                <span className="toolbar-label">Traspositore</span>
-                <button className="toolbar-square" disabled={transpose <= -6} onClick={() => changeTranspose(transpose - 1)} aria-label="Abbassa di un semitono">−</button>
-                <strong className="toolbar-value transpose-value">{transpose > 0 ? `+${transpose}` : transpose}</strong>
-                <button className="toolbar-square" disabled={transpose >= 6} onClick={() => changeTranspose(transpose + 1)} aria-label="Alza di un semitono">+</button>
-                <button className="toolbar-action toolbar-reset" disabled={transpose === 0} onClick={() => changeTranspose(0)} aria-label="Reimposta trasposizione">
-                  <ResetIcon /><span>Reimposta</span>
-                </button>
-              </div>
-              <div className="toolbar-group toolbar-font" aria-label="Dimensione testo e accordi">
-                <span className="toolbar-label">Testo</span>
-                <button className="toolbar-square font-control" disabled={readerFontSize <= READER_FONT_MIN} onClick={() => changeReaderFontSize(readerFontSize - 1)} aria-label="Riduci dimensione testo">A−</button>
-                <strong className="toolbar-value font-size-value">{readerFontPercentage(readerFontSize)}%</strong>
-                <button className="toolbar-square font-control" disabled={readerFontSize >= READER_FONT_MAX} onClick={() => changeReaderFontSize(readerFontSize + 1)} aria-label="Aumenta dimensione testo">A+</button>
-                <button className="toolbar-action font-reset" disabled={readerFontSize === READER_FONT_DEFAULT} onClick={() => changeReaderFontSize(READER_FONT_DEFAULT)} aria-label="Reimposta dimensione testo al 100%">100%</button>
-              </div>
-              <div className="toolbar-group toolbar-main-actions">
-                <button className={`toolbar-action${autoScroll ? " is-active" : ""}`} onClick={() => setAutoScroll((value) => !value)}>
-                  <PlayIcon paused={autoScroll} /><span>{autoScroll ? "Ferma auto-scroll" : "Auto-scroll"}</span>
-                </button>
-                <button className="toolbar-action" onClick={() => window.print()}><PrintIcon /><span>Stampa</span></button>
-                <button className="toolbar-action pdf-button" disabled={pdfState.status === "preparing"} onClick={handlePdf}>
-                  <DownloadIcon /><span>{pdfState.status === "preparing" ? "Creo PDF…" : pdfState.status === "ready" ? "Salva PDF" : "Scarica PDF"}</span>
-                </button>
-              </div>
-            </div>
-          ) : null}
-          {isChordPage && (pdfState.message || pdfState.error) ? (
-            <p className={`pdf-status${pdfState.error ? " is-error" : ""}`} role="status">{pdfState.error || pdfState.message}</p>
-          ) : null}
-          {page.status === "loading" ? <div className="loading">Caricamento della pagina pulita…</div> : null}
-          {page.status === "searching" ? <div className="loading" role="status">Ricerca in corso… Il primo risultato può richiedere alcuni secondi.</div> : null}
-          {page.status === "error" ? <div className="error">{page.title}. Riprova tra poco.</div> : null}
-          {page.status === "search-error" ? <div className="error">{page.title}. Premi Cerca per riprovare.</div> : null}
-          {page.status === "search-results" ? (
-            <section className="search-results">
-              <p className="eyebrow">Ricerca online</p>
-              <h1>{page.title}</h1>
-              {page.matches.length ? (
-                <ul>
-                  {page.matches.map((item) => (
-                    <li key={item.path}>
-                      <button onClick={() => navigate(item.path)}>
-                        <span>{item.title}</span>
-                        {item.artist ? <small>{item.artist}</small> : null}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : <p>Nessun brano trovato.</p>}
-            </section>
-          ) : null}
-          {page.status === "local-search" ? (
-            <section className="search-results local-results">
-              <p className="eyebrow">Ricerca offline</p>
-              <h1>{page.title}</h1>
-              {page.notice ? <p className="search-notice">{page.notice}</p> : null}
-              {page.matches.length ? (
-                <ul>
-                  {page.matches.map((item) => (
-                    <li key={item.path}><button onClick={() => navigate(item.path)}>{item.title}</button></li>
-                  ))}
-                </ul>
-              ) : <p>Nessun brano già salvato corrisponde alla ricerca.</p>}
-            </section>
-          ) : null}
-          {page.status === "ready" ? (
-            <article className="source-content" onClick={handleContentClick}>
-              {page.song.contentBlocks.map((block, index) => block.type === "music" ? (
-                <ChordSheet block={page.song.musicBlocks[block.musicIndex]} fontSize={readerFontSize} transpose={transpose} key={`${path}-music-${block.musicIndex}`} />
-              ) : (
-                <div className="source-html-block" dangerouslySetInnerHTML={{ __html: block.html }} key={`html-${index}`} />
-              ))}
-            </article>
-          ) : null}
-        </section>
-        <aside className="side-panel">
-          <section className="side-card removed-card">
-            <div className="side-card-heading"><span className="side-icon"><RemovedIcon /></span><h2>Cosa viene rimosso</h2></div>
-            <ul>
-              <li>Immagini, video e contenuti incorporati</li>
-              <li>Popup, overlay e newsletter</li>
-              <li>Pubblicità, consenso e tracciatori</li>
-            </ul>
-            <p className="offline-summary"><span><CheckIcon /></span><span><strong>{savedPages.length}</strong> {savedPages.length === 1 ? "brano disponibile" : "brani disponibili"} offline su questo dispositivo.</span></p>
+      {isHome ? (
+        <main className="home-layout" id="main-content">
+          <section className="home-search-section" aria-labelledby="home-search-title">
+            <p className="eyebrow">Il tuo canzoniere</p>
+            <h1 id="home-search-title">Cerca un brano o un artista</h1>
+            <form className="home-search" onSubmit={handleSearch}>
+              <input
+                autoFocus
+                aria-label="Cerca un brano o un artista"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Titolo del brano o nome dell’artista…"
+              />
+              <button type="submit" aria-label="Cerca">
+                <SearchIcon /><span>Cerca</span>
+              </button>
+            </form>
           </section>
-          <section className="side-card recent-card">
-            <div className="side-card-heading"><span className="side-icon"><BookmarkIcon /></span><h2>Salvati di recente</h2></div>
+
+          <section className="saved-library" aria-labelledby="saved-library-title">
+            <div className="saved-library-heading">
+              <div>
+                <BookmarkIcon />
+                <h2 id="saved-library-title">Brani salvati</h2>
+              </div>
+              <span>{savedPages.length} {savedPages.length === 1 ? "brano" : "brani"}</span>
+            </div>
             {savedPages.length ? (
-              <div className="saved-pages">
-                {savedPages.slice(0, 5).map((item) => (
-                  <button key={item.path} onClick={() => navigate(item.path)}><span>{item.title}</span><ChevronIcon /></button>
+              <ul className="home-saved-list">
+                {savedPages.map((item) => (
+                  <li key={item.path}>
+                    <button onClick={() => navigate(item.path)}>
+                      <span>
+                        <strong>{item.title}</strong>
+                        {item.artist ? <small>{item.artist}</small> : null}
+                      </span>
+                      <ChevronIcon />
+                    </button>
+                  </li>
                 ))}
+              </ul>
+            ) : (
+              <p className="home-saved-empty">I brani che apri verranno salvati qui e resteranno disponibili anche offline.</p>
+            )}
+          </section>
+        </main>
+      ) : (
+        <main className="layout" id="main-content">
+          <section className="reader-panel">
+            {page.status === "ready" ? (
+              <div className="reader-meta">
+                <div className="reader-meta-lead">
+                  <ReaderIcon />
+                  <span>Lettore senza interruzioni</span>
+                  <span className={`connection-status ${online ? "is-online" : "is-offline"}`}>
+                    <i aria-hidden="true" />{online ? "Online" : "Offline"}
+                  </span>
+                </div>
+                <a href={`${SOURCE_ORIGIN}${path}`} target="_blank" rel="noreferrer">Apri originale <ExternalIcon /></a>
               </div>
-            ) : <p className="empty-saved">I brani aperti compariranno qui e resteranno disponibili offline.</p>}
+            ) : null}
+            {isChordPage && page.status === "ready" ? (
+              <div className="music-toolbar" aria-label="Strumenti per gli accordi">
+                <div className="toolbar-group toolbar-transpose" aria-label="Traspositore">
+                  <span className="toolbar-label">Traspositore</span>
+                  <button className="toolbar-square" disabled={transpose <= -6} onClick={() => changeTranspose(transpose - 1)} aria-label="Abbassa di un semitono">−</button>
+                  <strong className="toolbar-value transpose-value">{transpose > 0 ? `+${transpose}` : transpose}</strong>
+                  <button className="toolbar-square" disabled={transpose >= 6} onClick={() => changeTranspose(transpose + 1)} aria-label="Alza di un semitono">+</button>
+                  <button className="toolbar-action toolbar-reset" disabled={transpose === 0} onClick={() => changeTranspose(0)} aria-label="Reimposta trasposizione">
+                    <ResetIcon /><span>Reimposta</span>
+                  </button>
+                </div>
+                <div className="toolbar-group toolbar-font" aria-label="Dimensione testo e accordi">
+                  <span className="toolbar-label">Testo</span>
+                  <button className="toolbar-square font-control" disabled={readerFontSize <= READER_FONT_MIN} onClick={() => changeReaderFontSize(readerFontSize - 1)} aria-label="Riduci dimensione testo">A−</button>
+                  <strong className="toolbar-value font-size-value">{readerFontPercentage(readerFontSize)}%</strong>
+                  <button className="toolbar-square font-control" disabled={readerFontSize >= READER_FONT_MAX} onClick={() => changeReaderFontSize(readerFontSize + 1)} aria-label="Aumenta dimensione testo">A+</button>
+                  <button className="toolbar-action font-reset" disabled={readerFontSize === READER_FONT_DEFAULT} onClick={() => changeReaderFontSize(READER_FONT_DEFAULT)} aria-label="Reimposta dimensione testo al 100%">100%</button>
+                </div>
+                <div className="toolbar-group toolbar-main-actions">
+                  <button className={`toolbar-action${autoScroll ? " is-active" : ""}`} onClick={() => setAutoScroll((value) => !value)}>
+                    <PlayIcon paused={autoScroll} /><span>{autoScroll ? "Ferma auto-scroll" : "Auto-scroll"}</span>
+                  </button>
+                  <button className="toolbar-action" onClick={() => window.print()}><PrintIcon /><span>Stampa</span></button>
+                  <button className="toolbar-action pdf-button" disabled={pdfState.status === "preparing"} onClick={handlePdf}>
+                    <DownloadIcon /><span>{pdfState.status === "preparing" ? "Creo PDF…" : pdfState.status === "ready" ? "Salva PDF" : "Scarica PDF"}</span>
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            {isChordPage && (pdfState.message || pdfState.error) ? (
+              <p className={`pdf-status${pdfState.error ? " is-error" : ""}`} role="status">{pdfState.error || pdfState.message}</p>
+            ) : null}
+            {page.status === "loading" ? <div className="loading">Caricamento della pagina pulita…</div> : null}
+            {page.status === "searching" ? <div className="loading" role="status">Ricerca in corso… Il primo risultato può richiedere alcuni secondi.</div> : null}
+            {page.status === "error" ? <div className="error">{page.title}. Riprova tra poco.</div> : null}
+            {page.status === "search-error" ? <div className="error">{page.title}. Premi Cerca per riprovare.</div> : null}
+            {page.status === "search-results" ? (
+              <section className="search-results">
+                <p className="eyebrow">Ricerca online</p>
+                <h1>{page.title}</h1>
+                {page.matches.length ? (
+                  <ul>
+                    {page.matches.map((item) => (
+                      <li key={item.path}>
+                        <button onClick={() => navigate(item.path)}>
+                          <span>{item.title}</span>
+                          {item.artist ? <small>{item.artist}</small> : null}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : <p>Nessun brano trovato.</p>}
+              </section>
+            ) : null}
+            {page.status === "local-search" ? (
+              <section className="search-results local-results">
+                <p className="eyebrow">Ricerca offline</p>
+                <h1>{page.title}</h1>
+                {page.notice ? <p className="search-notice">{page.notice}</p> : null}
+                {page.matches.length ? (
+                  <ul>
+                    {page.matches.map((item) => (
+                      <li key={item.path}><button onClick={() => navigate(item.path)}>{item.title}</button></li>
+                    ))}
+                  </ul>
+                ) : <p>Nessun brano già salvato corrisponde alla ricerca.</p>}
+              </section>
+            ) : null}
+            {page.status === "ready" ? (
+              <article className="source-content" onClick={handleContentClick}>
+                {page.song.contentBlocks.map((block, index) => block.type === "music" ? (
+                  <ChordSheet block={page.song.musicBlocks[block.musicIndex]} fontSize={readerFontSize} transpose={transpose} key={`${path}-music-${block.musicIndex}`} />
+                ) : (
+                  <div className="source-html-block" dangerouslySetInnerHTML={{ __html: block.html }} key={`html-${index}`} />
+                ))}
+              </article>
+            ) : null}
           </section>
-          <section className="side-card install-card">
-            <div className="side-card-heading"><span className="side-icon"><PhoneIcon /></span><h2>Installa su iPhone</h2></div>
-            <p>Apri in Safari, tocca Condividi e poi <strong>“Aggiungi alla schermata Home”.</strong></p>
-          </section>
-        </aside>
-      </main>
+        </main>
+      )}
     </div>
   );
 }
