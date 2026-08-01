@@ -1,6 +1,14 @@
-const SHELL_CACHE = "accordi-shell-v1";
+const SHELL_CACHE = "accordi-shell-__BUILD_HASH__";
 const PAGE_CACHE = "accordi-pages-v1";
-const APP_SHELL = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"];
+const APP_SHELL = [
+  "/",
+  "/manifest.webmanifest",
+  "/icon.svg",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/apple-touch-icon.png"
+  /* __PRECACHE_ASSETS__ */
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(SHELL_CACHE).then((cache) => cache.addAll(APP_SHELL)));
@@ -20,7 +28,9 @@ async function networkFirst(request, cacheName) {
   const cache = await caches.open(cacheName);
   try {
     const response = await fetch(request);
-    if (response.ok) await cache.put(request, response.clone()).catch(() => undefined);
+    const contentType = response.headers.get("content-type") || "";
+    if (!response.ok || !contentType.includes("application/json")) throw new Error("Risposta API non valida");
+    await cache.put(request, response.clone()).catch(() => undefined);
     return response;
   } catch {
     const cached = await cache.match(request);
@@ -31,7 +41,7 @@ async function networkFirst(request, cacheName) {
 
 async function cacheFirst(request, cacheName) {
   const cache = await caches.open(cacheName);
-  const cached = await cache.match(request);
+  const cached = await cache.match(request, { ignoreVary: true });
   if (cached) return cached;
   const response = await fetch(request);
   if (response.ok) await cache.put(request, response.clone()).catch(() => undefined);
@@ -54,7 +64,7 @@ self.addEventListener("fetch", (event) => {
           if (response.ok) await (await caches.open(SHELL_CACHE)).put("/", response.clone()).catch(() => undefined);
           return response;
         })
-        .catch(() => caches.match("/")),
+        .catch(() => caches.match("/", { ignoreVary: true })),
     );
     return;
   }
