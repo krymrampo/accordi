@@ -5,11 +5,15 @@ import {
   ChevronIcon,
   DownloadIcon,
   ExternalIcon,
+  MoonIcon,
   PlayIcon,
   PrintIcon,
   ReaderIcon,
   ResetIcon,
   SearchIcon,
+  SpeedIcon,
+  SunIcon,
+  TrashIcon,
 } from "./Icons.jsx";
 import { parseSongPage, SOURCE_ORIGIN } from "./music.js";
 import {
@@ -21,6 +25,7 @@ import {
   saveReaderFontSize,
 } from "./readerPreferences.js";
 import { extractSearchResults, getSearchTerm, searchSavedPages } from "./searchResults.js";
+
 
 const SAVED_PAGES_KEY = "accordi-clean:saved-pages";
 const PAGE_CACHE = "accordi-pages-v1";
@@ -65,13 +70,35 @@ export function App() {
   const [requestVersion, setRequestVersion] = useState(0);
   const [transpose, setTranspose] = useState(0);
   const [autoScroll, setAutoScroll] = useState(false);
+  const [scrollSpeed, setScrollSpeed] = useState(1);
   const [online, setOnline] = useState(() => navigator.onLine);
   const [savedPages, setSavedPages] = useState(() => readSavedPages());
+  const [savedFilter, setSavedFilter] = useState("");
+  const [savedSort, setSavedSort] = useState("recent");
   const [pdfState, setPdfState] = useState(EMPTY_PDF_STATE);
   const [readerFontSize, setReaderFontSize] = useState(() => readReaderFontSize(window.localStorage));
+  const [wakeLockActive, setWakeLockActive] = useState(false);
+  const [theme, setTheme] = useState(() => {
+    try {
+      const saved = window.localStorage.getItem("accordi-clean:theme");
+      if (saved === "dark" || saved === "light") return saved;
+    } catch {}
+    return typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  });
 
   const isChordPage = useMemo(() => path.startsWith("/accordi/"), [path]);
   const isHome = path === "/";
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    try {
+      window.localStorage.setItem("accordi-clean:theme", theme);
+    } catch {}
+  }, [theme]);
+
+  function toggleTheme() {
+    setTheme((current) => (current === "dark" ? "light" : "dark"));
+  }
 
   function navigate(nextPath) {
     const cleanPath = normalizePath(nextPath);
@@ -103,6 +130,36 @@ export function App() {
       window.removeEventListener("offline", markOffline);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isChordPage || page.status !== "ready") return undefined;
+    let lock = null;
+    let released = false;
+
+    async function obtainWakeLock() {
+      try {
+        if ("wakeLock" in navigator && typeof navigator.wakeLock.request === "function") {
+          lock = await navigator.wakeLock.request("screen");
+          if (!released) {
+            setWakeLockActive(true);
+            lock.addEventListener("release", () => setWakeLockActive(false));
+          }
+        }
+      } catch {
+        setWakeLockActive(false);
+      }
+    }
+
+    obtainWakeLock();
+
+    return () => {
+      released = true;
+      if (lock && typeof lock.release === "function") {
+        lock.release().catch(() => {});
+      }
+      setWakeLockActive(false);
+    };
+  }, [isChordPage, page.status]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -176,9 +233,33 @@ export function App() {
 
   useEffect(() => {
     if (!autoScroll) return undefined;
-    const timer = window.setInterval(() => window.scrollBy({ top: 1, behavior: "instant" }), 28);
+    const intervalMs = Math.max(10, Math.round(28 / scrollSpeed));
+    const timer = window.setInterval(() => window.scrollBy({ top: 1, behavior: "instant" }), intervalMs);
     return () => window.clearInterval(timer);
-  }, [autoScroll]);
+  }, [autoScroll, scrollSpeed]);
+
+  function removeSavedPageItem(pathToRemove, event) {
+    event.stopPropagation();
+    const current = readSavedPages();
+    const next = current.filter((item) => item.path !== pathToRemove);
+    try {
+      window.localStorage.setItem(SAVED_PAGES_KEY, JSON.stringify(next));
+    } catch {}
+    setSavedPages(next);
+  }
+
+  const filteredSavedPages = useMemo(() => {
+    let list = savedPages;
+    if (savedFilter.trim()) {
+      const term = savedFilter.trim().toLowerCase();
+      list = list.filter((item) => `${item.title} ${item.artist}`.toLowerCase().includes(term));
+    }
+    if (savedSort === "title") {
+      return [...list].sort((a, b) => a.title.localeCompare(b.title));
+    }
+    return list;
+  }, [savedPages, savedFilter, savedSort]);
+
 
   function handleContentClick(event) {
     const link = event.target.closest("a[data-local]");
@@ -242,14 +323,24 @@ export function App() {
           <button className="brand" onClick={() => navigate("/")} aria-label="Torna alla home">
             <span>ACCORDI</span><b>&amp;</b><span>SPARTITI</span>
           </button>
-          {!isHome ? (
-            <form className="search" onSubmit={handleSearch}>
-              <input aria-label="Cerca una canzone o un artista" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cerca una canzone o un artista…" />
-              <button type="submit" disabled={page.status === "searching"} aria-label={page.status === "searching" ? "Ricerca in corso" : "Cerca"}>
-                <SearchIcon />
-              </button>
-            </form>
-          ) : null}
+          <div className="header-actions">
+            {!isHome ? (
+              <form className="search" onSubmit={handleSearch}>
+                <input aria-label="Cerca una canzone o un artista" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cerca una canzone o un artista…" />
+                <button type="submit" disabled={page.status === "searching"} aria-label={page.status === "searching" ? "Ricerca in corso" : "Cerca"}>
+                  <SearchIcon />
+                </button>
+              </form>
+            ) : null}
+            <button
+              className="theme-toggle-btn"
+              onClick={toggleTheme}
+              aria-label={theme === "dark" ? "Attiva modalità giorno" : "Attiva modalità notte"}
+              title={theme === "dark" ? "Passa a modalità giorno" : "Passa a modalità notte (palco)"}
+            >
+              {theme === "dark" ? <SunIcon /> : <MoonIcon />}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -278,22 +369,55 @@ export function App() {
                 <BookmarkIcon />
                 <h2 id="saved-library-title">Brani salvati</h2>
               </div>
-              <span>{savedPages.length} {savedPages.length === 1 ? "brano" : "brani"}</span>
+              <span>{filteredSavedPages.length} di {savedPages.length} {savedPages.length === 1 ? "brano" : "brani"}</span>
             </div>
-            {savedPages.length ? (
+
+            {savedPages.length > 0 ? (
+              <div className="saved-library-controls">
+                <input
+                  type="search"
+                  placeholder="Filtra brani salvati…"
+                  value={savedFilter}
+                  onChange={(e) => setSavedFilter(e.target.value)}
+                  aria-label="Filtra tra i brani salvati"
+                />
+                <select
+                  value={savedSort}
+                  onChange={(e) => setSavedSort(e.target.value)}
+                  aria-label="Ordinamento brani salvati"
+                >
+                  <option value="recent">Ordina per: Più recenti</option>
+                  <option value="title">Ordina per: Titolo A-Z</option>
+                </select>
+              </div>
+            ) : null}
+
+            {filteredSavedPages.length ? (
               <ul className="home-saved-list">
-                {savedPages.map((item) => (
+                {filteredSavedPages.map((item) => (
                   <li key={item.path}>
-                    <button onClick={() => navigate(item.path)}>
-                      <span>
-                        <strong>{item.title}</strong>
-                        {item.artist ? <small>{item.artist}</small> : null}
-                      </span>
-                      <ChevronIcon />
-                    </button>
+                    <div className="home-saved-item">
+                      <button className="saved-item-link" onClick={() => navigate(item.path)}>
+                        <span>
+                          <strong>{item.title}</strong>
+                          {item.artist ? <small>{item.artist}</small> : null}
+                        </span>
+                        <ChevronIcon />
+                      </button>
+                      <button
+                        className="remove-saved-btn"
+                        onClick={(event) => removeSavedPageItem(item.path, event)}
+                        aria-label={`Rimuovi ${item.title} dai brani salvati`}
+                        title="Rimuovi dai brani salvati"
+                      >
+                        <TrashIcon />
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>
+            ) : savedPages.length > 0 ? (
+              <p className="home-saved-empty">Nessun brano salvato corrisponde al filtro inserito.</p>
             ) : (
               <p className="home-saved-empty">I brani che apri verranno salvati qui e resteranno disponibili anche offline.</p>
             )}
@@ -310,6 +434,11 @@ export function App() {
                   <span className={`connection-status ${online ? "is-online" : "is-offline"}`}>
                     <i aria-hidden="true" />{online ? "Online" : "Offline"}
                   </span>
+                  {wakeLockActive ? (
+                    <span className="wake-lock-badge" title="Lo schermo rimarrà sempre attivo durante l'esecuzione">
+                      Schermo Attivo
+                    </span>
+                  ) : null}
                 </div>
                 <a href={`${SOURCE_ORIGIN}${path}`} target="_blank" rel="noreferrer">Apri originale <ExternalIcon /></a>
               </div>
@@ -317,7 +446,7 @@ export function App() {
             {isChordPage && page.status === "ready" ? (
               <div className="music-toolbar" aria-label="Strumenti per gli accordi">
                 <div className="toolbar-group toolbar-transpose" aria-label="Traspositore">
-                  <span className="toolbar-label">Traspositore</span>
+                  <span className="toolbar-label">Tonalità</span>
                   <button className="toolbar-square" disabled={transpose <= -6} onClick={() => changeTranspose(transpose - 1)} aria-label="Abbassa di un semitono">−</button>
                   <strong className="toolbar-value transpose-value">{transpose > 0 ? `+${transpose}` : transpose}</strong>
                   <button className="toolbar-square" disabled={transpose >= 6} onClick={() => changeTranspose(transpose + 1)} aria-label="Alza di un semitono">+</button>
@@ -334,15 +463,29 @@ export function App() {
                 </div>
                 <div className="toolbar-group toolbar-main-actions">
                   <button className={`toolbar-action${autoScroll ? " is-active" : ""}`} onClick={() => setAutoScroll((value) => !value)}>
-                    <PlayIcon paused={autoScroll} /><span>{autoScroll ? "Ferma auto-scroll" : "Auto-scroll"}</span>
+                    <PlayIcon paused={autoScroll} /><span>{autoScroll ? "Ferma" : "Auto-scroll"}</span>
                   </button>
-                  <button className="toolbar-action" onClick={() => window.print()}><PrintIcon /><span>Stampa</span></button>
+                  {autoScroll ? (
+                    <select
+                      className="toolbar-speed-select"
+                      value={scrollSpeed}
+                      onChange={(e) => setScrollSpeed(Number(e.target.value))}
+                      aria-label="Velocità autoscroll"
+                    >
+                      <option value={0.75}>0.75x</option>
+                      <option value={1}>1.0x</option>
+                      <option value={1.5}>1.5x</option>
+                      <option value={2}>2.0x</option>
+                    </select>
+                  ) : null}
+                  <button className="toolbar-action" onClick={() => window.print()} title="Stampa brano"><PrintIcon /><span>Stampa</span></button>
                   <button className="toolbar-action pdf-button" disabled={pdfState.status === "preparing"} onClick={handlePdf}>
-                    <DownloadIcon /><span>{pdfState.status === "preparing" ? "Creo PDF…" : pdfState.status === "ready" ? "Salva PDF" : "Scarica PDF"}</span>
+                    <DownloadIcon /><span>{pdfState.status === "preparing" ? "Creo PDF…" : pdfState.status === "ready" ? "Salva PDF" : "PDF"}</span>
                   </button>
                 </div>
               </div>
             ) : null}
+
             {isChordPage && (pdfState.message || pdfState.error) ? (
               <p className={`pdf-status${pdfState.error ? " is-error" : ""}`} role="status">{pdfState.error || pdfState.message}</p>
             ) : null}

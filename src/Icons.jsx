@@ -51,3 +51,28 @@ export function BookmarkIcon() {
 export function ChevronIcon() {
   return <Icon size={17}><path d="m9 5 7 7-7 7" /></Icon>;
 }
+
+export function SunIcon() {
+  return <Icon size={18}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" /></Icon>;
+}
+
+export function MoonIcon() {
+  return <Icon size={18}><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" /></Icon>;
+}
+
+export function TrashIcon() {
+  return <Icon size={17}><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></Icon>;
+}
+
+export function SpeedIcon() {
+  return <Icon size={18}><path d="M12 14v-4M12 14l3-3M20.2 16A9 9 0 1 0 3.8 16" /></Icon>;
+}
+
+export function ZoomInIcon() {
+  return <Icon size={18}><circle cx="11" cy="11" r="7" /><path d="m21 21-4.35-4.35M11 8v6M8 11h6" /></Icon>;
+}
+
+export function ZoomOutIcon() {
+  return <Icon size={18}><circle cx="11" cy="11" r="7" /><path d="m21 21-4.35-4.35M8 11h6" /></Icon>;
+}
+
