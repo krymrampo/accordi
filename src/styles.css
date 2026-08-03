@@ -636,19 +636,20 @@ a:focus-visible,
 
 .source-content h1 {
   border-bottom: 1px solid var(--line);
-  font-size: clamp(34px, 4.5vw, 52px);
+  font-size: clamp(30px, 4vw, 46px);
   line-height: 1.06;
-  margin: 0 0 16px;
-  padding-bottom: 16px;
+  margin: 0 0 12px;
+  padding-bottom: 12px;
 }
 
 .source-content h2 {
   border-bottom: 1px solid var(--line);
-  font-size: clamp(28px, 3.1vw, 40px);
+  font-size: clamp(24px, 2.8vw, 36px);
   line-height: 1.12;
-  margin: 28px 0 20px;
-  padding-bottom: 13px;
+  margin: 18px 0 12px;
+  padding-bottom: 10px;
 }
+
 
 .source-content h3 {
   color: var(--ink);
@@ -724,35 +725,36 @@ a:focus-visible,
 .chord-sheet-scroll::-webkit-scrollbar-thumb { background: #aaa49b; border: 2px solid transparent; border-radius: 8px; }
 
 .chord-sheet-content {
-  --music-line-gap: .62em;
-  --music-stanza-gap: 1.25em;
+  --music-line-gap: .4em;
+  --music-stanza-gap: .9em;
   font-family: "Noto Sans Mono", monospace;
   font-size: var(--reader-font-size, 16px);
-  line-height: 1.5;
+  line-height: 1.45;
   min-width: 100%;
-  padding: 18px 0 24px;
+  padding: 10px 0 16px;
   width: max-content;
 }
 
 .music-section { min-width: 100%; }
 
 .music-section + .music-section {
-  border-top: 1px solid #ddd5c9;
+  border-top: 1px solid var(--line);
   margin-top: var(--music-stanza-gap);
   padding-top: var(--music-stanza-gap);
 }
 
-.music-row { min-height: 1.5em; white-space: pre; }
+.music-row { min-height: 1.4em; white-space: pre; }
 .music-pair-row { width: max-content; }
 .music-pair-track { display: flex; flex-wrap: nowrap; min-width: 100%; width: max-content; }
 
 .music-segment {
   display: inline-grid;
   flex: 0 0 calc(var(--segment-ch) * 1ch);
-  row-gap: .08em;
+  row-gap: .04em;
   grid-template-rows: auto auto;
   min-width: 1ch;
 }
+
 
 .music-chord {
   color: var(--chord-color);
