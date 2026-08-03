@@ -59,6 +59,24 @@ test("preserves exact character column positions for chords", () => {
   assert.deepEqual(pair.segments.map(({ text }) => text), ["Hello brav", "e world"]);
 });
 
+test("preserves chord spacing when lyrics end before trailing chords", () => {
+  const section = parseMusicText("      SIm       SOL RE  LA\nTo never ask why", "DO");
+  const pair = section.rows[0];
+
+  assert.equal(pair.kind, "pair");
+  assert.deepEqual(
+    pair.segments.map(({ chord, text }) => ({ chord: chord?.original || null, text })),
+    [
+      { chord: null, text: "To nev" },
+      { chord: "SIm", text: "er ask why" },
+      { chord: "SOL", text: "    " },
+      { chord: "RE", text: "    " },
+      { chord: "LA", text: "  " },
+    ]
+  );
+});
+
+
 
 test("transposes every parsed chord while leaving raw rows untouched", () => {
   const block = {

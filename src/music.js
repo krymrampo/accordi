@@ -145,12 +145,15 @@ function pairSegments(tokens, lyric) {
   const segments = [];
   const firstStart = tokens[0]?.start || 0;
   if (firstStart > 0) {
-    segments.push({ chord: null, text: lyric.slice(0, firstStart), width: firstStart });
+    const text = lyric.slice(0, firstStart).padEnd(firstStart, " ");
+    segments.push({ chord: null, text, width: firstStart });
   }
 
   tokens.forEach((token, index) => {
     const nextStart = tokens[index + 1]?.start ?? Math.max(lyric.length, token.start + token.source.length);
-    const text = token.start < lyric.length ? lyric.slice(token.start, Math.max(token.start, nextStart)) : "";
+    const targetLength = Math.max(token.source.length, nextStart - token.start);
+    const rawText = token.start < lyric.length ? lyric.slice(token.start, nextStart) : "";
+    const text = rawText.padEnd(targetLength, " ");
     segments.push({
       chord: token.chord,
       text,
@@ -159,6 +162,7 @@ function pairSegments(tokens, lyric) {
   });
   return segments;
 }
+
 
 
 export function parseMusicText(value, key = null) {
