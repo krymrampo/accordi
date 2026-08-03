@@ -50,14 +50,15 @@ test("builds chord/lyric pairs and standalone progressions", () => {
   ]);
 });
 
-test("snaps responsive chord anchors to word boundaries", () => {
+test("preserves exact character column positions for chords", () => {
   const section = parseMusicText("DO        SOL\nHello brave world", "DO");
   const pair = section.rows[0];
 
   assert.equal(pair.kind, "pair");
   assert.equal(pair.segments.map(({ text }) => text).join(""), "Hello brave world");
-  assert.deepEqual(pair.segments.map(({ text }) => text), ["Hello ", "brave world"]);
+  assert.deepEqual(pair.segments.map(({ text }) => text), ["Hello brav", "e world"]);
 });
+
 
 test("transposes every parsed chord while leaving raw rows untouched", () => {
   const block = {

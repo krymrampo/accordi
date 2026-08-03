@@ -143,20 +143,13 @@ function parseChordLine(line) {
 
 function pairSegments(tokens, lyric) {
   const segments = [];
-  const anchoredTokens = tokens.map((token) => {
-    let start = Math.min(token.start, lyric.length);
-    if (start < lyric.length && /\s/.test(lyric[start])) {
-      while (start < lyric.length && /\s/.test(lyric[start])) start += 1;
-    } else {
-      while (start > 0 && !/\s/.test(lyric[start - 1])) start -= 1;
-    }
-    return { ...token, start };
-  });
-  const firstStart = anchoredTokens[0]?.start || 0;
-  if (firstStart > 0) segments.push({ chord: null, text: lyric.slice(0, firstStart), width: firstStart });
+  const firstStart = tokens[0]?.start || 0;
+  if (firstStart > 0) {
+    segments.push({ chord: null, text: lyric.slice(0, firstStart), width: firstStart });
+  }
 
-  anchoredTokens.forEach((token, index) => {
-    const nextStart = anchoredTokens[index + 1]?.start ?? lyric.length;
+  tokens.forEach((token, index) => {
+    const nextStart = tokens[index + 1]?.start ?? Math.max(lyric.length, token.start + token.source.length);
     const text = token.start < lyric.length ? lyric.slice(token.start, Math.max(token.start, nextStart)) : "";
     segments.push({
       chord: token.chord,
@@ -166,6 +159,7 @@ function pairSegments(tokens, lyric) {
   });
   return segments;
 }
+
 
 export function parseMusicText(value, key = null) {
   const lines = String(value || "")

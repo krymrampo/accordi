@@ -5,20 +5,25 @@ function PairRow({ row }) {
   return (
     <div className="music-row music-pair-row">
       <div className="music-pair-track">
-        {row.segments.map((segment, index) => (
-          <span
-            className="music-segment"
-            key={`${segment.chord?.original || "text"}-${index}`}
-            style={{ "--segment-ch": Math.max(segment.width, segment.chord?.display?.length || 0, 1) + (segment.chord ? 1 : 0) }}
-          >
-            <span className={`music-chord${segment.chord ? "" : " is-empty"}`}>{segment.chord?.display || "\u00a0"}</span>
-            <span className="music-lyric">{segment.text || "\u00a0"}</span>
-          </span>
-        ))}
+        {row.segments.map((segment, index) => {
+          const chordLen = segment.chord?.display?.length || 0;
+          const segmentCh = Math.max(segment.width, chordLen, 1);
+          return (
+            <span
+              className="music-segment"
+              key={`${segment.chord?.original || "text"}-${index}`}
+              style={{ "--segment-ch": segmentCh }}
+            >
+              <span className={`music-chord${segment.chord ? "" : " is-empty"}`}>{segment.chord?.display || "\u00a0"}</span>
+              <span className="music-lyric">{segment.text || "\u00a0"}</span>
+            </span>
+          );
+        })}
       </div>
     </div>
   );
 }
+
 
 function MusicRow({ row }) {
   if (row.kind === "pair") return <PairRow row={row} />;
