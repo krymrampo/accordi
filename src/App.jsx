@@ -11,23 +11,27 @@ import {
   ReaderIcon,
   ResetIcon,
   SearchIcon,
-  SpeedIcon,
   SunIcon,
   TrashIcon,
 } from "./Icons.jsx";
 import { parseSongPage, SOURCE_ORIGIN } from "./music.js";
 import {
-  readReaderFontSize,
   readerFontPercentage,
   READER_FONT_DEFAULT,
   READER_FONT_MAX,
   READER_FONT_MIN,
-  saveReaderFontSize,
 } from "./readerPreferences.js";
+import {
+  readSavedPages,
+  rememberSavedPage,
+  removeSavedPage,
+  TRANSPOSE_MAX,
+  TRANSPOSE_MIN,
+  updateSavedPagePreferences,
+} from "./savedPages.js";
 import { extractSearchResults, getSearchTerm, searchSavedPages } from "./searchResults.js";
 
 
-const SAVED_PAGES_KEY = "accordi-clean:saved-pages";
 const PAGE_CACHE = "accordi-pages-v1";
 const EMPTY_PDF_STATE = { status: "idle", file: null, path: "", transpose: 0, message: "", error: "" };
 
@@ -40,25 +44,17 @@ function normalizePath(value) {
   }
 }
 
-function readSavedPages() {
-  try {
-    const saved = JSON.parse(window.localStorage.getItem(SAVED_PAGES_KEY) || "[]");
-    return Array.isArray(saved) ? saved : [];
-  } catch {
-    return [];
-  }
+function transposeLabel(value) {
+  return value > 0 ? `+${value}` : String(value);
 }
 
-function rememberSavedPage(path, title, artist = "") {
-  if (!path.startsWith("/accordi/")) return readSavedPages();
-  const current = readSavedPages().filter((item) => item.path !== path);
-  const next = [{ path, title, artist, savedAt: Date.now() }, ...current].slice(0, 250);
-  try {
-    window.localStorage.setItem(SAVED_PAGES_KEY, JSON.stringify(next));
-    return next;
-  } catch {
-    return current;
-  }
+function SavedPreferenceSummary({ item }) {
+  return (
+    <span className="saved-item-preferences" aria-label={`Trasposizione ${transposeLabel(item.transpose)}, testo ${readerFontPercentage(item.fontSize)}%`}>
+      <small>Trasposizione {transposeLabel(item.transpose)}</small>
+      <small>Testo {readerFontPercentage(item.fontSize)}%</small>
+    </span>
+  );
 }
 
 export function App() {
@@ -72,11 +68,11 @@ export function App() {
   const [autoScroll, setAutoScroll] = useState(false);
   const [scrollSpeed, setScrollSpeed] = useState(1);
   const [online, setOnline] = useState(() => navigator.onLine);
-  const [savedPages, setSavedPages] = useState(() => readSavedPages());
+  const [savedPages, setSavedPages] = useState(() => readSavedPages(window.localStorage));
   const [savedFilter, setSavedFilter] = useState("");
   const [savedSort, setSavedSort] = useState("recent");
   const [pdfState, setPdfState] = useState(EMPTY_PDF_STATE);
-  const [readerFontSize, setReaderFontSize] = useState(() => readReaderFontSize(window.localStorage));
+  const [readerFontSize, setReaderFontSize] = useState(READER_FONT_DEFAULT);
   const [wakeLockActive, setWakeLockActive] = useState(false);
   const [theme, setTheme] = useState(() => {
     try {
@@ -164,18 +160,20 @@ export function App() {
   useEffect(() => {
     const controller = new AbortController();
     const searchTerm = getSearchTerm(path);
-    setTranspose(0);
+    const savedPage = readSavedPages(window.localStorage).find((item) => item.path === path);
+    setTranspose(savedPage?.transpose ?? 0);
+    setReaderFontSize(savedPage?.fontSize ?? READER_FONT_DEFAULT);
     setPdfState(EMPTY_PDF_STATE);
 
     if (path === "/") {
       document.title = "Accordi e Spartiti · Cerca un brano";
-      setSavedPages(readSavedPages());
+      setSavedPages(readSavedPages(window.localStorage));
       setPage({ status: "home", html: "", title: "" });
       return () => controller.abort();
     }
 
     setPage({ status: searchTerm ? "searching" : "loading", html: "", title: "" });
-    const localMatches = searchSavedPages(readSavedPages(), searchTerm);
+    const localMatches = searchSavedPages(readSavedPages(window.localStorage), searchTerm);
 
     if (!navigator.onLine && searchTerm) {
       setPage({ status: "local-search", html: "", title: `Risultati salvati per “${searchTerm}”`, matches: localMatches });
@@ -208,7 +206,7 @@ export function App() {
         const song = parseSongPage(html, path);
         document.title = `${song.title} · Lettore pulito`;
         setPage({ status: "ready", song, title: song.title });
-        setSavedPages(rememberSavedPage(path, song.title, song.artist));
+        setSavedPages(rememberSavedPage(window.localStorage, path, song.title, song.artist));
       })
       .catch((error) => {
         if (error.name === "AbortError") return;
@@ -240,12 +238,7 @@ export function App() {
 
   function removeSavedPageItem(pathToRemove, event) {
     event.stopPropagation();
-    const current = readSavedPages();
-    const next = current.filter((item) => item.path !== pathToRemove);
-    try {
-      window.localStorage.setItem(SAVED_PAGES_KEY, JSON.stringify(next));
-    } catch {}
-    setSavedPages(next);
+    setSavedPages(removeSavedPage(window.localStorage, pathToRemove));
   }
 
   const filteredSavedPages = useMemo(() => {
@@ -276,13 +269,27 @@ export function App() {
   }
 
   function changeTranspose(nextValue) {
-    setTranspose(Math.max(-6, Math.min(6, nextValue)));
+    const normalized = Math.max(TRANSPOSE_MIN, Math.min(TRANSPOSE_MAX, nextValue));
+    setTranspose(normalized);
+    setSavedPages(updateSavedPagePreferences(window.localStorage, path, { transpose: normalized }));
     setPdfState(EMPTY_PDF_STATE);
   }
 
   function changeReaderFontSize(nextValue) {
-    setReaderFontSize(saveReaderFontSize(window.localStorage, nextValue));
+    const normalized = Math.max(READER_FONT_MIN, Math.min(READER_FONT_MAX, Math.round(nextValue)));
+    setReaderFontSize(normalized);
+    setSavedPages(updateSavedPagePreferences(window.localStorage, path, { fontSize: normalized }));
   }
+
+  const visibleSongBlocks = useMemo(() => {
+    if (page.status !== "ready") return [];
+    const lastMusicIndex = page.song.contentBlocks.reduce((lastIndex, block, index) => (
+      block.type === "music" ? index : lastIndex
+    ), -1);
+    return lastMusicIndex >= 0
+      ? page.song.contentBlocks.slice(0, lastMusicIndex + 1)
+      : page.song.contentBlocks;
+  }, [page]);
 
   async function handlePdf() {
     if (page.status !== "ready" || pdfState.status === "preparing") return;
@@ -401,6 +408,7 @@ export function App() {
                         <span>
                           <strong>{item.title}</strong>
                           {item.artist ? <small>{item.artist}</small> : null}
+                          <SavedPreferenceSummary item={item} />
                         </span>
                         <ChevronIcon />
                       </button>
@@ -447,9 +455,9 @@ export function App() {
               <div className="music-toolbar" aria-label="Strumenti per gli accordi">
                 <div className="toolbar-group toolbar-transpose" aria-label="Traspositore">
                   <span className="toolbar-label">Tonalità</span>
-                  <button className="toolbar-square" disabled={transpose <= -6} onClick={() => changeTranspose(transpose - 1)} aria-label="Abbassa di un semitono">−</button>
+                  <button className="toolbar-square" disabled={transpose <= TRANSPOSE_MIN} onClick={() => changeTranspose(transpose - 1)} aria-label="Abbassa di un semitono">−</button>
                   <strong className="toolbar-value transpose-value">{transpose > 0 ? `+${transpose}` : transpose}</strong>
-                  <button className="toolbar-square" disabled={transpose >= 6} onClick={() => changeTranspose(transpose + 1)} aria-label="Alza di un semitono">+</button>
+                  <button className="toolbar-square" disabled={transpose >= TRANSPOSE_MAX} onClick={() => changeTranspose(transpose + 1)} aria-label="Alza di un semitono">+</button>
                   <button className="toolbar-action toolbar-reset" disabled={transpose === 0} onClick={() => changeTranspose(0)} aria-label="Reimposta trasposizione">
                     <ResetIcon /><span>Reimposta</span>
                   </button>
@@ -526,13 +534,33 @@ export function App() {
               </section>
             ) : null}
             {page.status === "ready" ? (
-              <article className="source-content" onClick={handleContentClick}>
-                {page.song.contentBlocks.map((block, index) => block.type === "music" ? (
-                  <ChordSheet block={page.song.musicBlocks[block.musicIndex]} fontSize={readerFontSize} transpose={transpose} key={`${path}-music-${block.musicIndex}`} />
-                ) : (
-                  <div className="source-html-block" dangerouslySetInnerHTML={{ __html: block.html }} key={`html-${index}`} />
-                ))}
-              </article>
+              <>
+                <article className="source-content" onClick={handleContentClick}>
+                  {visibleSongBlocks.map((block, index) => block.type === "music" ? (
+                    <ChordSheet block={page.song.musicBlocks[block.musicIndex]} fontSize={readerFontSize} transpose={transpose} key={`${path}-music-${block.musicIndex}`} />
+                  ) : (
+                    <div className="source-html-block" dangerouslySetInnerHTML={{ __html: block.html }} key={`html-${index}`} />
+                  ))}
+                </article>
+                <section className="song-saved-library" aria-labelledby="song-saved-library-title">
+                  <div className="song-saved-library-heading">
+                    <BookmarkIcon />
+                    <h2 id="song-saved-library-title">Brani salvati</h2>
+                    <span>{savedPages.length}</span>
+                  </div>
+                  <ul className="song-saved-list">
+                    {savedPages.map((item) => (
+                      <li key={item.path}>
+                        <button onClick={() => navigate(item.path)} aria-current={item.path === path ? "page" : undefined}>
+                          <strong>{item.title}</strong>
+                          <SavedPreferenceSummary item={item} />
+                          <ChevronIcon />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              </>
             ) : null}
           </section>
         </main>

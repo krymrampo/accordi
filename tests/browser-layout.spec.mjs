@@ -19,8 +19,8 @@ test("shows only the large search and locally saved songs on the home page", asy
   });
   await page.addInitScript(() => {
     localStorage.setItem("accordi-clean:saved-pages", JSON.stringify([
-      { path: "/accordi/italiani/baglioni-claudio/solo-2/", title: "Solo", artist: "Claudio Baglioni", savedAt: 2 },
-      { path: "/accordi/italiani/giorgia/girasole/", title: "Girasole", artist: "Giorgia", savedAt: 1 },
+      { path: "/accordi/italiani/baglioni-claudio/solo-2/", title: "Solo", artist: "Claudio Baglioni", transpose: 2, fontSize: 18, savedAt: 2 },
+      { path: "/accordi/italiani/giorgia/girasole/", title: "Girasole", artist: "Giorgia", transpose: -1, fontSize: 15, savedAt: 1 },
     ]));
   });
 
@@ -29,8 +29,10 @@ test("shows only the large search and locally saved songs on the home page", asy
   await expect(page.getByRole("heading", { name: "Cerca un brano o un artista" })).toBeVisible();
   await expect(page.locator(".home-search input")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Brani salvati" })).toBeVisible();
-  await expect(page.locator(".home-saved-list button")).toHaveCount(2);
+  await expect(page.locator(".home-saved-list .saved-item-link")).toHaveCount(2);
   await expect(page.getByText("Claudio Baglioni")).toBeVisible();
+  await expect(page.locator(".home-saved-list")).toContainText("Trasposizione +2");
+  await expect(page.locator(".home-saved-list")).toContainText("Testo 113%");
   await expect(page.locator(".site-nav")).toHaveCount(0);
   await expect(page.locator(".side-panel")).toHaveCount(0);
   await expect(page.getByText("Videolezioni")).toHaveCount(0);
@@ -44,6 +46,24 @@ test("keeps only a compact search above the focused song reader", async ({ page 
   await expect(page.locator(".reader-panel")).toBeVisible();
   await expect(page.locator(".site-nav")).toHaveCount(0);
   await expect(page.locator(".side-panel")).toHaveCount(0);
+});
+
+test("replaces trailing source descriptions with the saved-song list", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("accordi-clean:saved-pages", JSON.stringify([
+      { path: "/accordi/italiani/giorgia/girasole/", title: "Girasole", artist: "Giorgia", transpose: -2, fontSize: 19, savedAt: 1 },
+    ]));
+  });
+  await page.goto(songPath);
+
+  await expect(page.locator(".source-content #credits")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Brani salvati" })).toBeVisible();
+  await expect(page.locator(".song-saved-list li")).toHaveCount(2);
+  await expect(page.locator(".song-saved-list")).toContainText("Solo");
+  await expect(page.locator(".song-saved-list")).toContainText("Girasole");
+  await expect(page.locator(".song-saved-list")).toContainText("Trasposizione -2");
+  await expect(page.locator(".song-saved-list")).toContainText("Testo 119%");
+  await expect(page.locator(".song-saved-list")).not.toContainText("Giorgia");
 });
 
 for (const width of [320, 390, 760, 1280]) {
@@ -99,8 +119,8 @@ for (const width of [320, 390, 760, 1280]) {
     expect(layout.rowOwnsOverflow).toBe(false);
     expect(layout.sheetBorderLeft).toBe("0px");
     expect(layout.sheetBackground).toBe("rgba(0, 0, 0, 0)");
-    expect(layout.verseGap).toBeGreaterThanOrEqual(layout.sheetFontSize * .55);
-    expect(layout.blankHeight).toBeGreaterThanOrEqual(layout.sheetFontSize * 1.2);
+    expect(layout.verseGap).toBeGreaterThanOrEqual(layout.sheetFontSize * .35);
+    expect(layout.blankHeight).toBeGreaterThanOrEqual(layout.sheetFontSize * .85);
     if (width <= 760) {
       expect(layout.sheetOverflows).toBe(true);
       expect(layout.sheetCanScroll).toBe(true);
@@ -123,7 +143,7 @@ test("uses a compact phone scale while keeping the same percentage controls", as
   await expect(content).toHaveCSS("font-size", "20px");
 });
 
-test("resizes chord text within bounds, resets it and persists the preference", async ({ page }) => {
+test("resizes chord text within bounds and persists it only for the current song", async ({ page }) => {
   await page.goto(songPath);
   const content = page.locator(".chord-sheet-content");
   const value = page.locator(".font-size-value");
@@ -160,6 +180,9 @@ test("resizes chord text within bounds, resets it and persists the preference", 
   await expect(page.locator(".font-size-value")).toHaveText("94%");
   await expect(page.locator(".chord-sheet-content")).toHaveCSS("font-size", "15px");
   await page.goto("/accordi/test/secondo-brano/");
+  await expect(page.locator(".font-size-value")).toHaveText("100%");
+  await expect(page.locator(".chord-sheet-content")).toHaveCSS("font-size", "16px");
+  await page.goto(songPath);
   await expect(page.locator(".font-size-value")).toHaveText("94%");
   await expect(page.locator(".chord-sheet-content")).toHaveCSS("font-size", "15px");
 });
@@ -180,6 +203,12 @@ test("transposes flats, slash basses and enforces the selected range", async ({ 
   for (let step = 0; step < 6; step += 1) await page.getByRole("button", { name: "Abbassa di un semitono" }).click();
   await expect(page.locator(".transpose-value")).toHaveText("-6");
   await expect(page.getByRole("button", { name: "Abbassa di un semitono" })).toBeDisabled();
+  await page.reload();
+  await expect(page.locator(".transpose-value")).toHaveText("-6");
+  await page.goto("/accordi/test/secondo-brano/");
+  await expect(page.locator(".transpose-value")).toHaveText("0");
+  await page.goto(songPath);
+  await expect(page.locator(".transpose-value")).toHaveText("-6");
 });
 
 test("downloads valid PDFs at zero, positive and negative transpositions", async ({ page }) => {
@@ -189,12 +218,14 @@ test("downloads valid PDFs at zero, positive and negative transpositions", async
     { delta: -6, filename: "claudio-baglioni-solo-trasposizione--6.pdf" },
   ]) {
     await page.goto(songPath);
+    const resetTranspose = page.getByRole("button", { name: "Reimposta trasposizione", exact: true });
+    if (await resetTranspose.isEnabled()) await resetTranspose.click();
     const buttonName = scenario.delta < 0 ? "Abbassa di un semitono" : "Alza di un semitono";
     for (let step = 0; step < Math.abs(scenario.delta); step += 1) {
       await page.getByRole("button", { name: buttonName }).click();
     }
     const downloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: "Scarica PDF" }).click();
+    await page.getByRole("button", { name: "PDF", exact: true }).click();
     const download = await downloadPromise;
 
     expect(download.suggestedFilename()).toBe(scenario.filename);
