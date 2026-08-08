@@ -357,7 +357,7 @@ export function parseSongPage(html, sourcePath = "/") {
   }
 
   return {
-    title: songTitle || content.querySelector("h1")?.textContent?.trim() || doc.title || "Accordi e Spartiti",
+    title: songTitle || content.querySelector("h1")?.textContent?.trim() || doc.title || "Accordi dal Krym",
     artist,
     sourceUrl,
     sourcePath,

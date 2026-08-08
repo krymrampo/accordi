@@ -1,13 +1,13 @@
 {
-  "name": "Accordi Clean",
-  "short_name": "Accordi",
+  "name": "Accordi dal Krym",
+  "short_name": "Krym",
   "description": "Lettore pulito di testi e accordi, con trasposizione e pagine disponibili offline.",
   "lang": "it",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#efefef",
-  "theme_color": "#111111",
+  "background_color": "#fcfbf8",
+  "theme_color": "#fbfaf7",
   "icons": [
     {
       "src": "/icon-192.png",

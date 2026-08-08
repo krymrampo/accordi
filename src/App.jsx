@@ -48,12 +48,46 @@ function transposeLabel(value) {
   return value > 0 ? `+${value}` : String(value);
 }
 
+function displaySongTitle(value) {
+  return String(value || "Brano").replace(/\s*:\s*chords?\s*$/i, "");
+}
+
 function SavedPreferenceSummary({ item }) {
   return (
     <span className="saved-item-preferences" aria-label={`Trasposizione ${transposeLabel(item.transpose)}, testo ${readerFontPercentage(item.fontSize)}%`}>
       <small>Trasposizione {transposeLabel(item.transpose)}</small>
       <small>Testo {readerFontPercentage(item.fontSize)}%</small>
     </span>
+  );
+}
+
+function SongSavedLibrary({ currentPath, items, onNavigate }) {
+  return (
+    <aside className="song-saved-library" aria-labelledby="song-saved-library-title">
+      <div className="song-saved-library-heading">
+        <BookmarkIcon />
+        <h2 id="song-saved-library-title">I miei brani</h2>
+        <span>{items.length}</span>
+      </div>
+      {items.length ? (
+        <ul className="song-saved-list">
+          {items.map((item) => (
+            <li key={item.path}>
+              <button onClick={() => onNavigate(item.path)} aria-current={item.path === currentPath ? "page" : undefined}>
+                <span className="song-saved-copy">
+                  <strong>{item.title}</strong>
+                  {item.artist ? <small>{item.artist}</small> : null}
+                  <SavedPreferenceSummary item={item} />
+                </span>
+                <ChevronIcon />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="song-saved-empty">I brani aperti compariranno qui.</p>
+      )}
+    </aside>
   );
 }
 
@@ -79,7 +113,7 @@ export function App() {
       const saved = window.localStorage.getItem("accordi-clean:theme");
       if (saved === "dark" || saved === "light") return saved;
     } catch {}
-    return typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    return "light";
   });
 
   const isChordPage = useMemo(() => path.startsWith("/accordi/"), [path]);
@@ -166,7 +200,7 @@ export function App() {
     setPdfState(EMPTY_PDF_STATE);
 
     if (path === "/") {
-      document.title = "Accordi e Spartiti · Cerca un brano";
+      document.title = "Accordi dal Krym · Cerca un brano";
       setSavedPages(readSavedPages(window.localStorage));
       setPage({ status: "home", html: "", title: "" });
       return () => controller.abort();
@@ -199,12 +233,12 @@ export function App() {
           const doc = new DOMParser().parseFromString(html, "text/html");
           const matches = extractSearchResults(doc, searchTerm);
           const title = `Risultati per “${searchTerm}”`;
-          document.title = `${title} · Lettore pulito`;
+          document.title = `${title} · Accordi dal Krym`;
           setPage({ status: "search-results", html: "", title, matches });
           return;
         }
         const song = parseSongPage(html, path);
-        document.title = `${song.title} · Lettore pulito`;
+        document.title = `${song.title} · Accordi dal Krym`;
         setPage({ status: "ready", song, title: song.title });
         setSavedPages(rememberSavedPage(window.localStorage, path, song.title, song.artist));
       })
@@ -328,7 +362,7 @@ export function App() {
       <header className="site-header">
         <div className={`header-main${isHome ? " is-home" : ""}`}>
           <button className="brand" onClick={() => navigate("/")} aria-label="Torna alla home">
-            <span>ACCORDI</span><b>&amp;</b><span>SPARTITI</span>
+            <span>ACCORDI DAL KRYM</span>
           </button>
           <div className="header-actions">
             {!isHome ? (
@@ -432,7 +466,7 @@ export function App() {
           </section>
         </main>
       ) : (
-        <main className="layout" id="main-content">
+        <main className={`layout${page.status === "ready" ? " has-song-library" : ""}`} id="main-content">
           <section className="reader-panel">
             {page.status === "ready" ? (
               <div className="reader-meta">
@@ -450,6 +484,12 @@ export function App() {
                 </div>
                 <a href={`${SOURCE_ORIGIN}${path}`} target="_blank" rel="noreferrer">Apri originale <ExternalIcon /></a>
               </div>
+            ) : null}
+            {page.status === "ready" ? (
+              <header className="song-heading">
+                <h1>{displaySongTitle(page.song.title)}</h1>
+                {page.song.artist ? <p>{page.song.artist}</p> : null}
+              </header>
             ) : null}
             {isChordPage && page.status === "ready" ? (
               <div className="music-toolbar" aria-label="Strumenti per gli accordi">
@@ -534,35 +574,18 @@ export function App() {
               </section>
             ) : null}
             {page.status === "ready" ? (
-              <>
-                <article className="source-content" onClick={handleContentClick}>
-                  {visibleSongBlocks.map((block, index) => block.type === "music" ? (
-                    <ChordSheet block={page.song.musicBlocks[block.musicIndex]} fontSize={readerFontSize} transpose={transpose} key={`${path}-music-${block.musicIndex}`} />
-                  ) : (
-                    <div className="source-html-block" dangerouslySetInnerHTML={{ __html: block.html }} key={`html-${index}`} />
-                  ))}
-                </article>
-                <section className="song-saved-library" aria-labelledby="song-saved-library-title">
-                  <div className="song-saved-library-heading">
-                    <BookmarkIcon />
-                    <h2 id="song-saved-library-title">Brani salvati</h2>
-                    <span>{savedPages.length}</span>
-                  </div>
-                  <ul className="song-saved-list">
-                    {savedPages.map((item) => (
-                      <li key={item.path}>
-                        <button onClick={() => navigate(item.path)} aria-current={item.path === path ? "page" : undefined}>
-                          <strong>{item.title}</strong>
-                          <SavedPreferenceSummary item={item} />
-                          <ChevronIcon />
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              </>
+              <article className="source-content" onClick={handleContentClick}>
+                {visibleSongBlocks.map((block, index) => block.type === "music" ? (
+                  <ChordSheet block={page.song.musicBlocks[block.musicIndex]} fontSize={readerFontSize} transpose={transpose} key={`${path}-music-${block.musicIndex}`} />
+                ) : (
+                  <div className="source-html-block" dangerouslySetInnerHTML={{ __html: block.html }} key={`html-${index}`} />
+                ))}
+              </article>
             ) : null}
           </section>
+          {page.status === "ready" ? (
+            <SongSavedLibrary currentPath={path} items={savedPages} onNavigate={navigate} />
+          ) : null}
         </main>
       )}
     </div>

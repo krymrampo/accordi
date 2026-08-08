@@ -131,10 +131,10 @@ export async function createSongPdfBytes(song, transpose) {
   const layout = layoutSongForPdf(song, transpose, { maxColumns: Math.floor(contentWidth / characterWidth) });
 
   pdf.setTitle(song.title || "Accordi");
-  pdf.setAuthor(song.artist || "Accordi Clean");
+  pdf.setAuthor(song.artist || "Accordi dal Krym");
   pdf.setSubject(`Testo e accordi - trasposizione ${layout.meta.transposeLabel} - ${song.sourceUrl || ""}`);
-  pdf.setCreator("Accordi Clean");
-  pdf.setProducer("Accordi Clean");
+  pdf.setCreator("Accordi dal Krym");
+  pdf.setProducer("Accordi dal Krym");
 
   layout.pages.forEach((rows, pageIndex) => {
     const page = pdf.addPage([layout.pageSize.width, layout.pageSize.height]);
